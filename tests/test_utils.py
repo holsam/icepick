@@ -29,7 +29,7 @@ class TestBackend:
         a = np.arange(6.0)
         assert np.array_equal(asnumpy(asdevice(a)), a)
 
-# TestFilters: checks for utils/filters.py
+# TestFilters: tests for utils/filters.py
 class TestFilters:
     # test_blobs_find_blob_beside_excluded_slab: a planted blob next to an excluded slab is found, nothing is found inside the slab
     def test_blobs_find_blob_beside_excluded_slab(self) -> None:
@@ -55,6 +55,60 @@ class TestFilters:
         x += rng.standard_normal(x.shape).astype(np.float32) * 0.01
         c = filters.blobs(x, np.ones_like(x), _GRID)
         assert 1 <= len(c) <= len(_GRID.sigmas)
+
+    # test_matched_finds_planted_particle: top filter peak lands on a z-stretched ball hidden in correlated noise
+    def test_matched_finds_planted_particle(self) -> None:
+        rng = np.random.default_rng(0)
+        x = ndi.gaussian_filter(rng.standard_normal((64, 96, 96)), 1.5).astype(np.float32)
+        x /= x.std()
+        self._plant(x, [(32, 40, 55)], 1.0)
+        w = np.ones_like(x)
+        w[:, :, :10] = 0    # a membrane slab, filled in and excluded as centres
+        s = filters.matched(x, w, _GRID)
+        s[w == 0] = -np.inf
+        top = np.unravel_index(np.argmax(s), s.shape)
+        assert np.linalg.norm(np.subtract(top, (32, 40, 55))) <= 2
+
+    # test_tiled_matched_finds_particles_in_both_noise_regions: the noise spectrum and level change along z, tile seams must not hide a particle in either half
+    def test_tiled_matched_finds_particles_in_both_noise_regions(self) -> None:
+        rng = np.random.default_rng(0)
+        x = np.empty((192, 64, 64), np.float32)
+        x[:96] = ndi.gaussian_filter(rng.standard_normal((96, 64, 64)), 2.0) * 6    # smooth, strong
+        x[96:] = rng.standard_normal((96, 64, 64)) * 0.5    # white, weak
+        spots = [(48, 32, 32), (144, 32, 32)]
+        self._plant(x, spots, 0.8)
+        w = np.ones_like(x)
+
+        def rank(s: np.ndarray, spot: tuple[int, int, int]) -> float:
+            return float((s > s[spot]).mean())    # fraction of the whole volume scoring above the particle centre
+
+        tiled = filters.matched(x, w, _GRID)
+        assert all(rank(tiled, s) < 0.0001 for s in spots)
+
+    # test_matched_rejects_volume_smaller_than_template: a volume that cannot hold the template box is an error
+    def test_matched_rejects_volume_smaller_than_template(self) -> None:
+        x = np.zeros((20, 64, 64), np.float32)
+        with pytest.raises(ValueError):
+            filters.matched(x, np.ones_like(x), _GRID)
+
+    # test_thin_keeps_best_of_close_pair: of two candidates closer than the radius only the better survives
+    def test_thin_keeps_best_of_close_pair(self) -> None:
+        c = np.array([[0, 0, 0, 1.0], [5, 0, 0, 2.0], [40, 0, 0, 0.5]])
+        assert filters.thin(c, 12.0)[:, 3].tolist() == [2.0, 0.5]
+
+    # test_rescore_takes_max_in_three_voxel_neighbourhood: a candidate one voxel off the filter peak still gets the peak
+    def test_rescore_takes_max_in_three_voxel_neighbourhood(self) -> None:
+        s = np.zeros((5, 5, 5), np.float32)
+        s[2, 2, 2] = 7.0
+        c = np.array([[3.5, 2.5, 2.5, 0.0], [0.5, 0.5, 0.5, 0.0]])    # x, y, z in voxel-centre coordinates
+        assert filters.rescore(c, s).tolist() == [7.0, 0.0]
+
+    # _plant: add z-stretched balls of the given amplitude to a volume
+    @staticmethod
+    def _plant(x: np.ndarray, centres: list[tuple[int, int, int]], amplitude: float, radius: float = 6.0) -> None:
+        zz, yy, xx = np.indices(x.shape)
+        for cz, cy, cx in centres:
+            x[np.sqrt(((zz - cz) / 1.5) ** 2 + (yy - cy) ** 2 + (xx - cx) ** 2) < radius] += amplitude
 
 # TestIo: tests for utils/io.py
 class TestIo:
