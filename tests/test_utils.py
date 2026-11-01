@@ -7,8 +7,22 @@ import numpy as np, pytest
 
 # Import internal icepick objects
 from icepick.utils import io
+from icepick.utils.backend import asdevice, asnumpy, irfftn, rfftn
 
-class TestUtilsIo:
+# TestBackend: tests for utils/backend.py
+class TestBackend:
+    # test_fft_round_trip: forward then inverse transform returns the input, including for odd lengths
+    def test_fft_round_trip(self) -> None:
+        a = np.random.default_rng(0).standard_normal((8, 9, 11)).astype(np.float32)
+        assert np.allclose(irfftn(rfftn(a), a.shape), a, atol=1e-5)
+
+    # test_host_device_round_trip: moving to the backend and back keeps the values
+    def test_host_device_round_trip(self) -> None:
+        a = np.arange(6.0)
+        assert np.array_equal(asnumpy(asdevice(a)), a)
+
+# TestIo: tests for utils/io.py
+class TestIo:
     # test_mrc_info_reads_shape_and_voxel_size: header values come back as written
     def test_mrc_info_reads_shape_and_voxel_size(self, tmp_path, write_mrc) -> None:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((5, 6, 7), np.float32), 7.84)
