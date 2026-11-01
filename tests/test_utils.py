@@ -8,11 +8,14 @@ from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import io, volume
+from icepick.utils import filters, io, volume
 from icepick.utils.backend import asdevice, asnumpy, irfftn, rfftn
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
 _VOXEL: float = 15.68
+
+# _GRID: the default working grid, as for a 250 A particle at 15.68 A/voxel
+_GRID = Params().grid(_VOXEL)
 
 # TestBackend: tests for utils/backend.py
 class TestBackend:
@@ -25,6 +28,33 @@ class TestBackend:
     def test_host_device_round_trip(self) -> None:
         a = np.arange(6.0)
         assert np.array_equal(asnumpy(asdevice(a)), a)
+
+# TestFilters: checks for utils/filters.py
+class TestFilters:
+    # test_blobs_find_blob_beside_excluded_slab: a planted blob next to an excluded slab is found, nothing is found inside the slab
+    def test_blobs_find_blob_beside_excluded_slab(self) -> None:
+        rng = np.random.default_rng(0)
+        x = ndi.gaussian_filter(rng.standard_normal((48, 64, 64)), 1.0).astype(np.float32)
+        x /= x.std()
+        zz, yy, xx = np.indices(x.shape)
+        x += 4.0 * np.exp(-((zz - 24) ** 2 + (yy - 30) ** 2 + (xx - 40) ** 2) / (2 * 3.0 ** 2))
+        w = np.ones_like(x)
+        w[:, :, :16] = 0    # membrane slab
+        x[:, :, :16] += 8.0    # dense, so an unmasked filter would peak here
+        c = filters.blobs(x, w, _GRID)
+        assert len(c) and (c[:, 0] >= 16).all()
+        best = c[np.argmax(c[:, 3])]
+        assert np.linalg.norm(best[[2, 1, 0]] - [24.5, 30.5, 40.5]) <= 3
+
+    # test_blobs_suppress_within_scale_only: one particle gives one candidate per scale at most
+    def test_blobs_suppress_within_scale_only(self) -> None:
+        x = np.zeros((40, 40, 40), np.float32)
+        x[20, 20, 20] = 1.0
+        x = ndi.gaussian_filter(x, 3.0) * 1000
+        rng = np.random.default_rng(1)
+        x += rng.standard_normal(x.shape).astype(np.float32) * 0.01
+        c = filters.blobs(x, np.ones_like(x), _GRID)
+        assert 1 <= len(c) <= len(_GRID.sigmas)
 
 # TestIo: tests for utils/io.py
 class TestIo:
