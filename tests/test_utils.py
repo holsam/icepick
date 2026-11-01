@@ -4,10 +4,15 @@ icepick: tests for shared utilities
 
 # Import external dependencies
 import numpy as np, pytest
+from scipy import ndimage as ndi
 
 # Import internal icepick objects
-from icepick.utils import io
+from icepick.config import Params
+from icepick.utils import io, volume
 from icepick.utils.backend import asdevice, asnumpy, irfftn, rfftn
+
+# _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
+_VOXEL: float = 15.68
 
 # TestBackend: tests for utils/backend.py
 class TestBackend:
@@ -54,3 +59,39 @@ class TestIo:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((1, 4, 4), np.float32))
         with pytest.raises(ValueError):
             io.bin_volume(path, 2, np.mean)
+
+# TestVolume: tests for utils/volume.py
+class TestVolume:
+    # test_load_masks_membrane_and_speck: the membrane is dilated, a bright speck is masked, density is centred outside both
+    def test_load_masks_membrane_and_speck(self, tmp_path, write_mrc) -> None:
+        rng = np.random.default_rng(0)
+        d = rng.standard_normal((32, 48, 48)).astype(np.float32) + 5.0
+        m = np.zeros(d.shape, np.int8)
+        m[:, 20:22, :] = 1
+        d[10:12, 8:10, 8:10] = 60.0    # far brighter than anything protein makes
+        v = volume.load(write_mrc(tmp_path / 'd.mrc', d, _VOXEL), write_mrc(tmp_path / 's.mrc', m, _VOXEL), Params())
+        assert v.grid.factor == 1
+        assert v.weight[16, 20, 24] == 0 and v.weight[16, 19, 24] == 0    # membrane and its dilation
+        assert v.weight[10, 8, 8] == 0 and v.artefact[10, 8, 8]    # speck
+        assert v.weight[16, 40, 24] == 1
+        assert abs(np.median(v.x[v.weight > 0])) < 0.05    # the speck stays in the normalisation, so only the centre is checked
+
+    # test_load_rejects_mismatched_shapes: a segmentation of another size is an error
+    def test_load_rejects_mismatched_shapes(self, tmp_path, write_mrc) -> None:
+        d = write_mrc(tmp_path / 'd.mrc', np.zeros((8, 8, 8), np.float32), _VOXEL)
+        s = write_mrc(tmp_path / 's.mrc', np.zeros((8, 8, 6), np.int8), _VOXEL)
+        try:
+            volume.load(d, s, Params())
+        except ValueError as error:
+            assert 'differs' in str(error)
+        else:
+            raise AssertionError('expected ValueError')
+
+    # test_sample_z_brackets_structured_middle: structure peaks mid-stack, junk rises at both ends, the range sits between
+    def test_sample_z_brackets_structured_middle(self) -> None:
+        rng = np.random.default_rng(0)
+        z = np.arange(120)
+        amplitude = 0.3 + 2.0 * np.exp(-(((z - 60) / 15) ** 2)) + 1.5 * np.exp(-((z / 6) ** 2)) + 1.5 * np.exp(-(((z - 119) / 6) ** 2))
+        x = ndi.gaussian_filter(rng.standard_normal((120, 40, 40)), 1.5) * amplitude[:, None, None]
+        lo, hi = volume.sample_z(x.astype(np.float32))
+        assert 10 <= lo <= 45 and 75 <= hi <= 110
