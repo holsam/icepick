@@ -1,0 +1,26 @@
+'''
+icepick: cytosolic particle stream
+'''
+
+# Import external dependencies
+import numpy as np
+from scipy.stats import rankdata
+
+# Import internal icepick objects
+from icepick.utils import filters
+from icepick.utils.volume import Volume
+
+# pick: candidate array (x, y, z, score, stream) in input voxels for one tomogram, score is a mean rank in (0, 1]
+def pick(volume: Volume, *, stream: int = 0) -> np.ndarray:
+    grid = volume.grid
+    lo, hi = volume.lamella
+    c = filters.blobs(volume.x, volume.weight, grid)
+    c = c[(c[:, 2] >= lo) & (c[:, 2] < hi)]    # outside the lamella is junk
+    if not len(c):
+        return np.zeros((0, 5))
+    mf = filters.rescore(c, filters.matched(volume.x, volume.weight, grid))
+    # the two scores err differently, so their mean rank beats either alone
+    c[:, 3] = (rankdata(c[:, 3]) + rankdata(mf)) / (2 * len(c))
+    c = filters.thin(c, grid.thin)
+    c[:, :3] *= grid.factor
+    return np.column_stack([c, np.full(len(c), stream)])
