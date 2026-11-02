@@ -144,6 +144,17 @@ class TestIo:
         with pytest.raises(ValueError):
             io.bin_volume(path, 2, np.mean)
 
+    # test_write_candidates_round_trips_npy_and_star: both files hold the same rows, the star has one header block and one line per candidate
+    def test_write_candidates_round_trips_npy_and_star(self, tmp_path) -> None:
+        c = np.array([[10.5, 20.25, 30.0, 0.75, 0.0], [1.0, 2.0, 3.0, 0.5, 1.0]])
+        io.write_candidates(tmp_path / 'tomo.v1', c)    # a dot in the name must survive
+        assert np.array_equal(np.load(tmp_path / 'tomo.v1.npy'), c)
+        lines = (tmp_path / 'tomo.v1.star').read_text().splitlines()
+        assert lines[:3] == ['data_particles', '', 'loop_'] and lines[3:8] == [
+            '_rlnCoordinateX #1', '_rlnCoordinateY #2', '_rlnCoordinateZ #3', '_rlnAutopickFigureOfMerit #4', '_icepickStream #5']
+        rows = np.array([[float(v) for v in line.split()] for line in lines[8:]])
+        assert np.allclose(rows, c, atol=0.01) and rows[:, 4].tolist() == [0.0, 1.0]
+
 # TestVolume: tests for utils/volume.py
 class TestVolume:
     # test_load_masks_membrane_and_speck: the membrane is dilated, a bright speck is masked, density is centred outside both

@@ -32,3 +32,10 @@ def bin_volume(path: Path, factor: int, reduce: Callable[..., np.ndarray]) -> np
             blocks = slab.reshape((z1 - z0) // factor, factor, ny // factor, factor, nx // factor, factor)
             out[z0 // factor:z1 // factor] = reduce(blocks, axis=(1, 3, 5))
     return out
+
+# write_candidates: save an (n, 5) candidate array (x, y, z, score, stream) in input voxels as <stem>.npy and a RELION-style <stem>.star
+def write_candidates(stem: Path, c: np.ndarray) -> None:
+    np.save(Path(f'{stem}.npy'), c)    # not with_suffix, tomogram names may contain dots
+    with open(f'{stem}.star', 'w') as f:
+        f.write('data_particles\n\nloop_\n_rlnCoordinateX #1\n_rlnCoordinateY #2\n_rlnCoordinateZ #3\n_rlnAutopickFigureOfMerit #4\n_icepickStream #5\n')
+        np.savetxt(f, c, fmt=['%.2f', '%.2f', '%.2f', '%.6f', '%d'])
