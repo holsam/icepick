@@ -1,17 +1,28 @@
 [project]
 name = "icepick"
-version = "0.0.0"
+version = "0.1.0"
 description = "Template-free particle picking for cryoET workflows."
 readme = "README.md"
 authors = [
     { name = "Sam Holland", email = "hol_sam@icloud.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "mrcfile>=1.5.4",
+    "numpy>=2.5.4",
+    "pydantic>=2.14.2",
+    "scipy>=1.18.1",
+    "typer>=0.27.3",
+]
 
 [project.scripts]
-icepick = "icepick:main"
+icepick = "icepick.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
