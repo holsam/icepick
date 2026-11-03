@@ -20,15 +20,20 @@ def mrc_info(path: Path) -> tuple[tuple[int, int, int], float]:
 
 # bin_volume: read an MRC in z chunks and reduce each factor-sized block, cropping to a multiple of the factor
 def bin_volume(path: Path, factor: int, reduce: Callable[..., np.ndarray]) -> np.ndarray:
-    with mrcfile.mmap(path, mode='r', permissive=True) as mrc:
-        nz, ny, nx = (int(n) // factor * factor for n in mrc.data.shape)
-        if min(nz, ny, nx) == 0:
-            raise ValueError(f'volume {mrc.data.shape!r} in {path!r} is smaller than binning factor {factor}')
-        out = np.empty((nz // factor, ny // factor, nx // factor), np.float32)
-        step = factor * max(_CHUNK // factor, 1)    # chunks must hold whole blocks
+    with mrcfile.open(path, mode='r', permissive=True, header_only=True) as mrc:
+        h = mrc.header
+        shape = (int(h.nz), int(h.ny), int(h.nx))
+        dtype, offset = mrcfile.utils.data_dtype_from_header(h), 1024 + int(h.nsymbt)
+    nz, ny, nx = (n // factor * factor for n in shape)
+    if min(nz, ny, nx) == 0:
+        raise ValueError(f'volume {shape!r} in {path!r} is smaller than binning factor {factor}')
+    out = np.empty((nz // factor, ny // factor, nx // factor), np.float32)
+    step = factor * max(_CHUNK // factor, 1)    # chunks must hold whole blocks
+    with open(path, 'rb') as f:
         for z0 in range(0, nz, step):
             z1 = min(z0 + step, nz)
-            slab = np.asarray(mrc.data[z0:z1, :ny, :nx], dtype=np.float32)
+            f.seek(offset + z0 * shape[1] * shape[2] * dtype.itemsize)
+            slab = np.fromfile(f, dtype, (z1 - z0) * shape[1] * shape[2]).reshape(z1 - z0, shape[1], shape[2])[:, :ny, :nx].astype(np.float32)
             blocks = slab.reshape((z1 - z0) // factor, factor, ny // factor, factor, nx // factor, factor)
             out[z0 // factor:z1 // factor] = reduce(blocks, axis=(1, 3, 5))
     return out
