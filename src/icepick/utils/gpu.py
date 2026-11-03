@@ -27,7 +27,7 @@ def require_gpu() -> None:
     try:
         import cupy
     except ImportError as error:
-        raise RuntimeError("cupy is not installed, install with 'pip install icepick[gpu]'") from error
+        raise RuntimeError("cupy is not installed, install with 'uv tool install \"git+https://github.com/holsam/icepick[gpu]\"'") from error
     if cupy.cuda.runtime.getDeviceCount() < 1:
         raise RuntimeError('cupy found no CUDA device')
 
