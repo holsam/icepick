@@ -8,8 +8,7 @@ from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import filters, gpu, io, volume
-from icepick.utils.backend import asdevice, asnumpy, irfftn, rfftn
+from icepick.utils import backend, filters, gpu, io, volume
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
 _VOXEL: float = 15.68
@@ -22,12 +21,19 @@ class TestBackend:
     # test_fft_round_trip: forward then inverse transform returns the input, including for odd lengths
     def test_fft_round_trip(self) -> None:
         a = np.random.default_rng(0).standard_normal((8, 9, 11)).astype(np.float32)
-        assert np.allclose(irfftn(rfftn(a), a.shape), a, atol=1e-5)
+        assert np.allclose(backend.irfftn(backend.rfftn(a), a.shape), a, atol=1e-5)
 
     # test_host_device_round_trip: moving to the backend and back keeps the values
     def test_host_device_round_trip(self) -> None:
         a = np.arange(6.0)
-        assert np.array_equal(asnumpy(asdevice(a)), a)
+        assert np.array_equal(backend.asnumpy(backend.asdevice(a)), a)
+
+    # test_use_cpu_restores_numpy: after switching back, xp and ndi forward to numpy and scipy
+    def test_use_cpu_restores_numpy(self) -> None:
+        backend.use_cpu()
+        assert backend.xp.zeros(3).dtype == np.float64
+        assert backend.ndi.gaussian_filter is ndi.gaussian_filter
+        assert isinstance(backend.asdevice(np.arange(3)), np.ndarray)
 
 # TestFilters: tests for utils/filters.py
 class TestFilters:
