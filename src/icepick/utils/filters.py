@@ -87,9 +87,10 @@ def thin(c: np.ndarray, radius: float) -> np.ndarray:
 
 # dog: difference of normalised-convolution gaussian means, ignoring voxels where w is zero
 def dog(x: np.ndarray, w: np.ndarray, s: float, min_weight: float) -> np.ndarray:
-    a, wa = nconv(x, w, s)
+    r, wa = nconv(x, w, s)
     b, _ = nconv(x, w, 1.6 * s)
-    r = a - b
+    r -= b    # in place
+    del b
     r[wa < min_weight] = 0    # centre mostly membrane, response unreliable
     return r
 
@@ -97,7 +98,8 @@ def dog(x: np.ndarray, w: np.ndarray, s: float, min_weight: float) -> np.ndarray
 def nconv(x: np.ndarray, w: np.ndarray, s: float) -> tuple[np.ndarray, np.ndarray]:
     num = ndi.gaussian_filter(x * w, s, truncate=3.0)
     den = ndi.gaussian_filter(w, s, truncate=3.0)
-    return num / xp.maximum(den, 1e-3), den
+    num /= xp.maximum(den, 1e-3)    # in place
+    return num, den
 
 # _suppress: greedy removal of candidates within slope * sigma + offset of a better one, rows (score, x, y, z, sigma)
 def _suppress(c: np.ndarray, radius: tuple[float, float]) -> np.ndarray:
