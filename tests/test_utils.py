@@ -211,6 +211,15 @@ class TestVolume:
         lo, hi = volume.sample_z(x.astype(np.float32))
         assert 10 <= lo <= 45 and 75 <= hi <= 110
 
+    # test_sample_z_slabs_match_single_slab: slabbing with a halo gives the same range as filtering the whole volume at once
+    def test_sample_z_slabs_match_single_slab(self) -> None:
+        rng = np.random.default_rng(1)
+        z = np.arange(120)
+        amplitude = 0.3 + 2.0 * np.exp(-(((z - 60) / 15) ** 2)) + 1.5 * np.exp(-((z / 6) ** 2)) + 1.5 * np.exp(-(((z - 119) / 6) ** 2))
+        x = (ndi.gaussian_filter(rng.standard_normal((120, 40, 40)), 1.5) * amplitude[:, None, None]).astype(np.float32)
+        assert volume.sample_z(x, slab=7) == volume.sample_z(x, slab=len(x))
+
+
 # TestGpu: tests for utils/gpu.py
 class TestGpu:
     # test_cuda_visible_devices_wins: the CUDA list is used over scheduler variables
