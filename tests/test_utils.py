@@ -8,7 +8,7 @@ from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import filters, io, volume
+from icepick.utils import filters, gpu, io, volume
 from icepick.utils.backend import asdevice, asnumpy, irfftn, rfftn
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
@@ -204,3 +204,46 @@ class TestVolume:
         x = ndi.gaussian_filter(rng.standard_normal((120, 40, 40)), 1.5) * amplitude[:, None, None]
         lo, hi = volume.sample_z(x.astype(np.float32))
         assert 10 <= lo <= 45 and 75 <= hi <= 110
+
+# TestGpu: tests for utils/gpu.py
+class TestGpu:
+    # test_cuda_visible_devices_wins: the CUDA list is used over scheduler variables
+    def test_cuda_visible_devices_wins(self, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '2,3')
+        monkeypatch.setenv('SLURM_STEP_GPUS', '0')
+        assert gpu.assigned_gpus() == ['2', '3']
+
+    # test_empty_cuda_visible_devices_means_none: set but empty hides every GPU
+    def test_empty_cuda_visible_devices_means_none(self, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
+        assert gpu.assigned_gpus() == []
+
+    # test_slurm_fallback: scheduler variables apply when CUDA_VISIBLE_DEVICES is unset
+    def test_slurm_fallback(self, monkeypatch) -> None:
+        monkeypatch.delenv('CUDA_VISIBLE_DEVICES', raising=False)
+        monkeypatch.setenv('SLURM_JOB_GPUS', '1,4')
+        assert gpu.assigned_gpus() == ['1', '4']
+
+    # test_nvidia_smi_fallback: with nothing assigned the card list comes from nvidia-smi
+    def test_nvidia_smi_fallback(self, monkeypatch) -> None:
+        for name in ('CUDA_VISIBLE_DEVICES', *gpu._SLURM):
+            monkeypatch.delenv(name, raising=False)
+        class Done:
+            stdout = 'GPU 0: A100 (UUID: GPU-aaa)\nGPU 1: A100 (UUID: GPU-bbb)\n'
+        monkeypatch.setattr(gpu.subprocess, 'run', lambda *a, **k: Done())
+        assert gpu.assigned_gpus() == ['0', '1']
+
+    # test_missing_nvidia_smi_is_empty: no tool means no GPUs, not an error
+    def test_missing_nvidia_smi_is_empty(self, monkeypatch) -> None:
+        for name in ('CUDA_VISIBLE_DEVICES', *gpu._SLURM):
+            monkeypatch.delenv(name, raising=False)
+        def missing(*args, **kwargs):
+            raise FileNotFoundError
+        monkeypatch.setattr(gpu.subprocess, 'run', missing)
+        assert gpu.assigned_gpus() == []
+
+    # test_require_gpu_errors_when_none: nothing assigned raises a clear error
+    def test_require_gpu_errors_when_none(self, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
+        with pytest.raises(RuntimeError, match='no GPU'):
+            gpu.require_gpu()
