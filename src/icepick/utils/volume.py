@@ -25,8 +25,9 @@ class Volume:
 # load: bin a density and its binary membrane segmentation onto the working grid and build the volume
 def load(density: Path, segmentation: Path, params: Params) -> Volume:
     shape, voxel_size = mrc_info(density)
-    if mrc_info(segmentation)[0] != shape:
-        raise ValueError(f'segmentation shape {mrc_info(segmentation)[0]!r} differs from density shape {shape!r}')
+    seg_shape, _ = mrc_info(segmentation)
+    if seg_shape != shape:
+        raise ValueError(f'segmentation shape {seg_shape!r} differs from density shape {shape!r}')
     if voxel_size <= 0:
         raise ValueError(f'no voxel size in the header of {density!r}')
     grid = params.grid(voxel_size)

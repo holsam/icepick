@@ -12,11 +12,11 @@ _CHUNK: int = 64
 
 # mrc_info: (z, y, x) shape and voxel size in Angstrom from the MRC header
 def mrc_info(path: Path) -> tuple[tuple[int, int, int], float]:
-    with mrcfile.mmap(path, mode='r', permissive=True) as mrc:
-        if mrc.data.ndim != 3:
-            raise ValueError(f'expected a 3D volume in {path!r}, got shape {mrc.data.shape!r}')
-        z, y, x = mrc.data.shape
-        return (int(z), int(y), int(x)), round(float(mrc.voxel_size.x), 4)    # float32 header noise would move radii across voxel distances
+    with mrcfile.open(path, mode='r', permissive=True, header_only=True) as mrc:
+        z, y, x = int(mrc.header.nz), int(mrc.header.ny), int(mrc.header.nx)
+        if z < 2:
+            raise ValueError(f'expected a 3D volume in {path!r}, got shape {(z, y, x)!r}')
+        return (z, y, x), round(float(mrc.voxel_size.x), 4)    # float32 header noise would move radii across voxel distances
 
 # bin_volume: read an MRC in z chunks and reduce each factor-sized block, cropping to a multiple of the factor
 def bin_volume(path: Path, factor: int, reduce: Callable[..., np.ndarray]) -> np.ndarray:

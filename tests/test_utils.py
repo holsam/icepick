@@ -155,6 +155,20 @@ class TestIo:
         rows = np.array([[float(v) for v in line.split()] for line in lines[8:]])
         assert np.allclose(rows, c, atol=0.01) and rows[:, 4].tolist() == [0.0, 1.0]
 
+    # test_mrc_info_does_not_map_data: the header is enough, so the data mapper is never called
+    def test_mrc_info_does_not_map_data(self, tmp_path, write_mrc, monkeypatch) -> None:
+        path = write_mrc(tmp_path / 'a.mrc', np.zeros((4, 5, 6), np.float32), voxel_size=7.84)
+        def fail(*args, **kwargs):
+            raise AssertionError('data was mapped')
+        monkeypatch.setattr(io.mrcfile, 'mmap', fail)
+        assert io.mrc_info(path) == ((4, 5, 6), 7.84)
+
+    # test_mrc_info_rejects_single_image: a 2D image is not a volume
+    def test_mrc_info_rejects_single_image(self, tmp_path, write_mrc) -> None:
+        path = write_mrc(tmp_path / 'a.mrc', np.zeros((5, 6), np.float32))
+        with pytest.raises(ValueError):
+            io.mrc_info(path)
+
 # TestVolume: tests for utils/volume.py
 class TestVolume:
     # test_load_masks_membrane_and_speck: the membrane is dilated, a bright speck is masked, density is centred outside both
