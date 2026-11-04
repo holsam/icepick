@@ -1,6 +1,6 @@
 [project]
 name = "icepick"
-version = "0.1.0"
+version = "0.2.0"
 description = "Template-free particle picking for cryoET workflows."
 readme = "README.md"
 authors = [
@@ -17,6 +17,11 @@ dependencies = [
 
 [project.scripts]
 icepick = "icepick.cli:main"
+
+[project.optional-dependencies]
+gpu = [
+    "cupy-cuda12x>=14.0 ; sys_platform != 'darwin'",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

@@ -31,3 +31,12 @@ class TestCli:
         f = write_mrc(tmp_path / 'd.mrc', np.zeros((8, 8, 8), np.float32))
         result = CliRunner().invoke(app, [str(f), str(f), '--particle-diameter', '0'])
         assert result.exit_code == 2
+
+    # test_gpu_without_gpu_fails: --gpu with no assigned GPU exits non-zero and names the problem
+    def test_gpu_without_gpu_fails(self, tmp_path, write_mrc, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
+        density = write_mrc(tmp_path / 'd.mrc', np.zeros((8, 8, 8), np.float32))
+        seg = write_mrc(tmp_path / 's.mrc', np.zeros((8, 8, 8), np.int8))
+        result = CliRunner().invoke(app, [str(density), str(seg), '--gpu'])
+        assert result.exit_code != 0
+        assert 'no GPU' in result.output

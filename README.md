@@ -20,6 +20,7 @@ Option | Default | Description
 `-o /path/to/output/directory/` | `./` (current working directory) | Output directory.
 `--particle-diameter INT` | 250 | Ångstrom. Sets the working grid and every particle-scaled length. The input is binned by the whole factor that brings the voxel closest to diameter / 16 (so a particle spans about 16 working voxels), capped at 24 Å per working voxel for large particles.
 `--tilt-range INT` | 60 | Maximum tilt angle in degrees (±). Sets the template elongation along z from missing wedge.
+`--gpu` | *n/a* | Switches processing to use first available GPU on Linux/Windows systems via `cupy`. Requires the `icepick[gpu]` optional extra to be installed.
 
 ### Outputs
 Outputs are named after the denoised tomogram: `/path/to/output/directory/<name>.npy` and `/path/to/output/directory/<name>.star`.

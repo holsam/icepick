@@ -8,8 +8,7 @@ from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import filters, io, volume
-from icepick.utils.backend import asdevice, asnumpy, irfftn, rfftn
+from icepick.utils import backend, filters, gpu, io, volume
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
 _VOXEL: float = 15.68
@@ -22,12 +21,19 @@ class TestBackend:
     # test_fft_round_trip: forward then inverse transform returns the input, including for odd lengths
     def test_fft_round_trip(self) -> None:
         a = np.random.default_rng(0).standard_normal((8, 9, 11)).astype(np.float32)
-        assert np.allclose(irfftn(rfftn(a), a.shape), a, atol=1e-5)
+        assert np.allclose(backend.irfftn(backend.rfftn(a), a.shape), a, atol=1e-5)
 
     # test_host_device_round_trip: moving to the backend and back keeps the values
     def test_host_device_round_trip(self) -> None:
         a = np.arange(6.0)
-        assert np.array_equal(asnumpy(asdevice(a)), a)
+        assert np.array_equal(backend.asnumpy(backend.asdevice(a)), a)
+
+    # test_use_cpu_restores_numpy: after switching back, xp and ndi forward to numpy and scipy
+    def test_use_cpu_restores_numpy(self) -> None:
+        backend.use_cpu()
+        assert backend.xp.zeros(3).dtype == np.float64
+        assert backend.ndi.gaussian_filter is ndi.gaussian_filter
+        assert isinstance(backend.asdevice(np.arange(3)), np.ndarray)
 
 # TestFilters: tests for utils/filters.py
 class TestFilters:
@@ -155,6 +161,20 @@ class TestIo:
         rows = np.array([[float(v) for v in line.split()] for line in lines[8:]])
         assert np.allclose(rows, c, atol=0.01) and rows[:, 4].tolist() == [0.0, 1.0]
 
+    # test_mrc_info_does_not_map_data: the header is enough, so the data mapper is never called
+    def test_mrc_info_does_not_map_data(self, tmp_path, write_mrc, monkeypatch) -> None:
+        path = write_mrc(tmp_path / 'a.mrc', np.zeros((4, 5, 6), np.float32), voxel_size=7.84)
+        def fail(*args, **kwargs):
+            raise AssertionError('data was mapped')
+        monkeypatch.setattr(io.mrcfile, 'mmap', fail)
+        assert io.mrc_info(path) == ((4, 5, 6), 7.84)
+
+    # test_mrc_info_rejects_single_image: a 2D image is not a volume
+    def test_mrc_info_rejects_single_image(self, tmp_path, write_mrc) -> None:
+        path = write_mrc(tmp_path / 'a.mrc', np.zeros((5, 6), np.float32))
+        with pytest.raises(ValueError):
+            io.mrc_info(path)
+
 # TestVolume: tests for utils/volume.py
 class TestVolume:
     # test_load_masks_membrane_and_speck: the membrane is dilated, a bright speck is masked, density is centred outside both
@@ -190,3 +210,55 @@ class TestVolume:
         x = ndi.gaussian_filter(rng.standard_normal((120, 40, 40)), 1.5) * amplitude[:, None, None]
         lo, hi = volume.sample_z(x.astype(np.float32))
         assert 10 <= lo <= 45 and 75 <= hi <= 110
+
+    # test_sample_z_slabs_match_single_slab: slabbing with a halo gives the same range as filtering the whole volume at once
+    def test_sample_z_slabs_match_single_slab(self) -> None:
+        rng = np.random.default_rng(1)
+        z = np.arange(120)
+        amplitude = 0.3 + 2.0 * np.exp(-(((z - 60) / 15) ** 2)) + 1.5 * np.exp(-((z / 6) ** 2)) + 1.5 * np.exp(-(((z - 119) / 6) ** 2))
+        x = (ndi.gaussian_filter(rng.standard_normal((120, 40, 40)), 1.5) * amplitude[:, None, None]).astype(np.float32)
+        assert volume.sample_z(x, slab=7) == volume.sample_z(x, slab=len(x))
+
+
+# TestGpu: tests for utils/gpu.py
+class TestGpu:
+    # test_cuda_visible_devices_wins: the CUDA list is used over scheduler variables
+    def test_cuda_visible_devices_wins(self, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '2,3')
+        monkeypatch.setenv('SLURM_STEP_GPUS', '0')
+        assert gpu.assigned_gpus() == ['2', '3']
+
+    # test_empty_cuda_visible_devices_means_none: set but empty hides every GPU
+    def test_empty_cuda_visible_devices_means_none(self, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
+        assert gpu.assigned_gpus() == []
+
+    # test_slurm_fallback: scheduler variables apply when CUDA_VISIBLE_DEVICES is unset
+    def test_slurm_fallback(self, monkeypatch) -> None:
+        monkeypatch.delenv('CUDA_VISIBLE_DEVICES', raising=False)
+        monkeypatch.setenv('SLURM_JOB_GPUS', '1,4')
+        assert gpu.assigned_gpus() == ['1', '4']
+
+    # test_nvidia_smi_fallback: with nothing assigned the card list comes from nvidia-smi
+    def test_nvidia_smi_fallback(self, monkeypatch) -> None:
+        for name in ('CUDA_VISIBLE_DEVICES', *gpu._SLURM):
+            monkeypatch.delenv(name, raising=False)
+        class Done:
+            stdout = 'GPU 0: A100 (UUID: GPU-aaa)\nGPU 1: A100 (UUID: GPU-bbb)\n'
+        monkeypatch.setattr(gpu.subprocess, 'run', lambda *a, **k: Done())
+        assert gpu.assigned_gpus() == ['0', '1']
+
+    # test_missing_nvidia_smi_is_empty: no tool means no GPUs, not an error
+    def test_missing_nvidia_smi_is_empty(self, monkeypatch) -> None:
+        for name in ('CUDA_VISIBLE_DEVICES', *gpu._SLURM):
+            monkeypatch.delenv(name, raising=False)
+        def missing(*args, **kwargs):
+            raise FileNotFoundError
+        monkeypatch.setattr(gpu.subprocess, 'run', missing)
+        assert gpu.assigned_gpus() == []
+
+    # test_require_gpu_errors_when_none: nothing assigned raises a clear error
+    def test_require_gpu_errors_when_none(self, monkeypatch) -> None:
+        monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
+        with pytest.raises(RuntimeError, match='no GPU'):
+            gpu.require_gpu()

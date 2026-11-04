@@ -25,8 +25,9 @@ class Volume:
 # load: bin a density and its binary membrane segmentation onto the working grid and build the volume
 def load(density: Path, segmentation: Path, params: Params) -> Volume:
     shape, voxel_size = mrc_info(density)
-    if mrc_info(segmentation)[0] != shape:
-        raise ValueError(f'segmentation shape {mrc_info(segmentation)[0]!r} differs from density shape {shape!r}')
+    seg_shape, _ = mrc_info(segmentation)
+    if seg_shape != shape:
+        raise ValueError(f'segmentation shape {seg_shape!r} differs from density shape {shape!r}')
     if voxel_size <= 0:
         raise ValueError(f'no voxel size in the header of {density!r}')
     grid = params.grid(voxel_size)
@@ -43,9 +44,15 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     return Volume(x, m, artefact, weight, sample_z(x), grid)
 
 # sample_z: working-grid slice range of the specimen, between the structure minima either side of the structure peak
-def sample_z(x: np.ndarray) -> tuple[int, int]:
+def sample_z(x: np.ndarray, *, slab: int = 32) -> tuple[int, int]:
     # per-slice spread of band-passed density peaks inside the lamella and rises again at the tomogram ends (junk)
-    band = ndi.gaussian_filter(x, 1.0) - ndi.gaussian_filter(x, 4.0)    # working-voxel scales, which follow the particle
-    profile = asnumpy(ndi.gaussian_filter1d(band.std(axis=(1, 2)), 3.0))
+    halo = 16    # gaussian radius at sigma 4.0 with the default truncate of 4.0, so slab interiors match the full volume
+    spread = []
+    for a in range(0, len(x), slab):
+        b = min(a + slab, len(x))
+        lo, hi = max(a - halo, 0), min(b + halo, len(x))
+        band = ndi.gaussian_filter(x[lo:hi], 1.0) - ndi.gaussian_filter(x[lo:hi], 4.0)    # working-voxel scales, which follow the particle
+        spread.append(band[a - lo:b - lo].std(axis=(1, 2)))
+    profile = asnumpy(ndi.gaussian_filter1d(xp.concatenate(spread), 3.0))
     top = int(np.argmax(profile))
     return int(np.argmin(profile[:top + 1])), top + int(np.argmin(profile[top:])) + 1

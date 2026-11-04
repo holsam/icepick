@@ -38,3 +38,13 @@ class TestMembrane:
         volume = Volume(x, m, np.zeros_like(m), np.ones_like(x), (10, 40), Params().grid(7.84))    # factor 2
         c = membrane.pick(volume)
         assert c[:, 2].min() >= 2 * 10 and c[:, 2].max() <= 2 * 40
+
+    # test_shell_slabs_match_single_transform: slabbed shells equal one whole-volume edt, including membrane-free slabs and membrane on the first and last slice
+    def test_shell_slabs_match_single_transform(self) -> None:
+        rng = np.random.default_rng(2)
+        grid = Params().grid(15.68)
+        m = np.zeros((80, 24, 24), bool)
+        m[20:40] = rng.random((20, 24, 24)) < 0.02    # sparse middle, long membrane-free runs either side
+        m[0, 5, 5] = m[-1, 7, 9] = True    # membrane on the first and last slice
+        full = np.minimum(np.round(ndi.distance_transform_edt(~m)), grid.band + 1).astype(np.int16)
+        assert np.array_equal(membrane._shell(m, grid, slab=5), full)

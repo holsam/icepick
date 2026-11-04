@@ -8,7 +8,7 @@ from scipy.spatial import cKDTree
 
 # Import internal icepick objects
 from icepick.config import Grid
-from icepick.utils.backend import asdevice, asnumpy, irfftn, ndi, rfftn, xp
+from icepick.utils.backend import asdevice, asnumpy, irfftn, ndi, release, rfftn, xp
 
 # blobs: membrane-aware multi-scale DoG candidates, rows (x, y, z, dog score) in working-grid voxels, centred on voxel centres
 def blobs(x: np.ndarray, w: np.ndarray, grid: Grid) -> np.ndarray:
@@ -52,6 +52,7 @@ def matched(x: np.ndarray, w: np.ndarray, grid: Grid) -> np.ndarray:
         s = _matched_tile(filled[lo:hi], w[lo:hi], kernels, grid.box)
         acc[a:b] += tri[a - c0:b - c0] * s[a - lo:b - lo]
         total[a:b] += tri[a - c0:b - c0]
+        release()
     return acc / total
 
 # kernel: zero-mean soft ball of radius r (working voxels) with a negative shell, stretched along z
@@ -69,7 +70,7 @@ def kernel(r: float, grid: Grid) -> np.ndarray:
 def rescore(c: np.ndarray, s: np.ndarray) -> np.ndarray:
     near = ndi.maximum_filter(s, size=3)    # blob centres sit a voxel or so off the filter peak
     i = np.clip(np.floor(c[:, [2, 1, 0]]).astype(int), 0, np.array(s.shape) - 1)
-    return asnumpy(near[tuple(i.T)])
+    return asnumpy(near[tuple(asdevice(a) for a in i.T)])
 
 # thin: greedy removal of candidates within radius of a better one, rows (x, y, z, score)
 def thin(c: np.ndarray, radius: float) -> np.ndarray:
@@ -86,9 +87,10 @@ def thin(c: np.ndarray, radius: float) -> np.ndarray:
 
 # dog: difference of normalised-convolution gaussian means, ignoring voxels where w is zero
 def dog(x: np.ndarray, w: np.ndarray, s: float, min_weight: float) -> np.ndarray:
-    a, wa = nconv(x, w, s)
+    r, wa = nconv(x, w, s)
     b, _ = nconv(x, w, 1.6 * s)
-    r = a - b
+    r -= b    # in place
+    del b
     r[wa < min_weight] = 0    # centre mostly membrane, response unreliable
     return r
 
@@ -96,7 +98,8 @@ def dog(x: np.ndarray, w: np.ndarray, s: float, min_weight: float) -> np.ndarray
 def nconv(x: np.ndarray, w: np.ndarray, s: float) -> tuple[np.ndarray, np.ndarray]:
     num = ndi.gaussian_filter(x * w, s, truncate=3.0)
     den = ndi.gaussian_filter(w, s, truncate=3.0)
-    return num / xp.maximum(den, 1e-3), den
+    num /= xp.maximum(den, 1e-3)    # in place
+    return num, den
 
 # _suppress: greedy removal of candidates within slope * sigma + offset of a better one, rows (score, x, y, z, sigma)
 def _suppress(c: np.ndarray, radius: tuple[float, float]) -> np.ndarray:

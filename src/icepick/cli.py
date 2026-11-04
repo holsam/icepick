@@ -11,6 +11,8 @@ from typing import Annotated
 # Import internal icepick objects
 from icepick.config import Params
 from icepick.merge import pick_tomogram
+from icepick.utils import backend
+from icepick.utils.gpu import require_gpu
 from icepick.utils.io import write_candidates
 
 # app: initialise Typer instance
@@ -46,11 +48,21 @@ def pick(
         float,
         typer.Option(help='Maximum tilt angle (±) in degrees.')
     ] = _DEFAULTS.tilt_range,
+    gpu: Annotated[
+        bool,
+        typer.Option('--gpu', help='Run processing using first available GPU (requires icepick\'s gpu extra).'),
+    ] = False,
 ) -> None:
     try:
         params = Params(particle_diameter=particle_diameter, tilt_range=tilt_range)
     except ValidationError as error:
         raise typer.BadParameter(str(error)) from error
+    if gpu:
+        try:
+            require_gpu()
+        except RuntimeError as error:
+            raise typer.BadParameter(str(error), param_hint='--gpu') from error
+        backend.use_gpu()
     c = pick_tomogram(density, segmentation, params)
     output.mkdir(parents=True, exist_ok=True)
     write_candidates(output / density.stem, c)
