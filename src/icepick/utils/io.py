@@ -3,7 +3,8 @@ icepick: file i/o utilities
 '''
 
 # Import external dependencies
-import csv, mrcfile, numpy as np, warnings
+import csv, mrcfile, numpy as np
+from loguru import logger
 from collections.abc import Callable
 from pathlib import Path
 
@@ -48,20 +49,33 @@ def write_candidates(stem: Path, c: np.ndarray) -> None:
 # _STAMP_PRIORS: STAMP orientation prior per icepick stream id
 _STAMP_PRIORS: dict[int, str] = {0: 'none', 1: 'normal'}
 
+# check_picks: validate an existing picks CSV against the columns and tomogram_id of a new run, returning the number of tomograms already present
+def check_picks(path: Path, tomogram_id: str, *, stamp_priors: bool = False) -> int:
+    if not path.exists():
+        return 0
+    header = _picks_header(stamp_priors)
+    with open(path, newline='') as f:
+        rows = list(csv.reader(f))
+    if not rows or rows[0] != header:
+        raise ValueError(f'columns in {path!r} do not match {header!r}, remove it or match --stamp-priors')
+    ids = {r[0] for r in rows[1:]}
+    if tomogram_id in ids:
+        raise ValueError(f'{tomogram_id!r} is already in {path!r}, remove its rows or use another output directory')
+    return len(ids)
+
 # append_picks: append candidates to a shared picks CSV with a tomogram_id column, optionally adding a STAMP prior column
 def append_picks(path: Path, tomogram_id: str, c: np.ndarray, *, stamp_priors: bool = False) -> None:
-    header = ['tomogram_id', 'x', 'y', 'z', 'confidence', 'stream'] + (['prior'] if stamp_priors else [])
+    n = check_picks(path, tomogram_id, stamp_priors=stamp_priors)    # backstop, the CLI checks before picking
     if path.exists():
-        with open(path, newline='') as f:
-            rows = list(csv.reader(f))
-        if not rows or rows[0] != header:
-            raise ValueError(f'columns in {path!r} do not match {header!r}, remove it or match --stamp-priors')
-        if any(r[0] == tomogram_id for r in rows[1:]):
-            warnings.warn(f'{tomogram_id!r} is already in {path!r}, appending duplicate picks')
+        logger.info(f'appending to {path}, picks from {n} tomograms already present')
     with open(path, 'a', newline='') as f:
         w = csv.writer(f)
         if f.tell() == 0:
-            w.writerow(header)
+            w.writerow(_picks_header(stamp_priors))
         for x, y, z, score, stream in c:
             row = [tomogram_id, f'{x:.2f}', f'{y:.2f}', f'{z:.2f}', f'{score:.6f}', int(stream)]
             w.writerow(row + ([_STAMP_PRIORS[int(stream)]] if stamp_priors else []))
+
+# _picks_header: picks CSV column names
+def _picks_header(stamp_priors: bool) -> list[str]:
+    return ['tomogram_id', 'x', 'y', 'z', 'confidence', 'stream'] + (['prior'] if stamp_priors else [])

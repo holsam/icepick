@@ -15,7 +15,7 @@ from icepick.merge import pick_tomogram
 from icepick.utils import backend
 from icepick.utils.gpu import require_gpu
 from icepick.utils import log
-from icepick.utils.io import append_picks, write_candidates
+from icepick.utils.io import append_picks, check_picks, write_candidates
 
 # app: initialise Typer instance
 app = typer.Typer(
@@ -69,9 +69,14 @@ def pick(
         except RuntimeError as error:
             raise typer.BadParameter(str(error), param_hint='--gpu') from error
         backend.use_gpu()
-    c = pick_tomogram(density, segmentation, params)
     output.mkdir(parents=True, exist_ok=True)
     log.setup(output)
+    try:
+        check_picks(output / 'icepick.csv', segmentation.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
+    except ValueError as error:
+        logger.error(str(error))
+        raise typer.Exit(1) from error
+    c = pick_tomogram(density, segmentation, params)
     write_candidates(output / density.stem, c)
     append_picks(output / 'icepick.csv', segmentation.stem, c, stamp_priors=stamp_priors)
     counts = np.bincount(c[:, 4].astype(int), minlength=2)

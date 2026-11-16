@@ -30,6 +30,17 @@ class TestCli:
         assert picks[1].startswith('tomo_a_segmented,')
         assert f'tomo_a {len(c)} candidates' in (tmp_path / 'out' / 'icepick.log').read_text()
 
+    # test_pick_stops_on_duplicate_tomogram: a tomogram already in icepick.csv exits non-zero before picking and leaves the file alone
+    def test_pick_stops_on_duplicate_tomogram(self, tmp_path, write_mrc, monkeypatch) -> None:
+        f = write_mrc(tmp_path / 'tomo_a.mrc', np.zeros((8, 8, 8), np.float32))
+        out = tmp_path / 'out'
+        out.mkdir()
+        (out / 'icepick.csv').write_text('tomogram_id,x,y,z,confidence,stream\ntomo_a,1.00,2.00,3.00,0.5,0\n')
+        monkeypatch.setattr('icepick.cli.pick_tomogram', lambda *a: (_ for _ in ()).throw(AssertionError('picked')))
+        result = CliRunner().invoke(app, [str(f), str(f), '-o', str(out)])
+        assert result.exit_code == 1 and 'already in' in result.output
+        assert len((out / 'icepick.csv').read_text().splitlines()) == 2
+
     # test_pick_rejects_bad_options: a non-positive diameter is a usage error, not a traceback
     def test_pick_rejects_bad_options(self, tmp_path, write_mrc) -> None:
         f = write_mrc(tmp_path / 'd.mrc', np.zeros((8, 8, 8), np.float32))

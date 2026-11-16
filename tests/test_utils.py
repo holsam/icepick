@@ -162,19 +162,33 @@ class TestIo:
         rows = np.array([[float(v) for v in line.split()] for line in lines[8:]])
         assert np.allclose(rows, c, atol=0.01) and rows[:, 4].tolist() == [0.0, 1.0]
 
-    # test_append_picks_adds_priors_and_guards_columns: one header, stream-mapped priors, duplicate warning, column mismatch error
-    def test_append_picks_adds_priors_and_guards_columns(self, tmp_path) -> None:
+    # test_append_picks_adds_priors_and_logs_existing: one header, stream-mapped priors, an info message counting tomograms already present
+    def test_append_picks_adds_priors_and_logs_existing(self, tmp_path) -> None:
         c = np.array([[10.5, 20.25, 30.0, 0.75, 0.0], [1.0, 2.0, 3.0, 0.5, 1.0]])
         path = tmp_path / 'picks.csv'
+        messages = []
+        logger.add(messages.append, format='{message}')
         io.append_picks(path, 'a', c, stamp_priors=True)
+        assert not messages    # a new file needs no message
         io.append_picks(path, 'b', c, stamp_priors=True)
         lines = path.read_text().splitlines()
         assert lines[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(lines) == 5
         assert lines[1].endswith(',0,none') and lines[2].endswith(',1,normal')
-        with pytest.warns(UserWarning):
+        assert f'appending to {path}, picks from 1 tomograms already present' in messages[0]
+
+    # test_check_picks_rejects_duplicates_and_column_mismatch: a repeated tomogram_id or different columns is an error, a missing file holds none
+    def test_check_picks_rejects_duplicates_and_column_mismatch(self, tmp_path) -> None:
+        c = np.array([[1.0, 2.0, 3.0, 0.5, 1.0]])
+        path = tmp_path / 'picks.csv'
+        assert io.check_picks(path, 'a') == 0
+        io.append_picks(path, 'a', c, stamp_priors=True)
+        assert io.check_picks(path, 'b', stamp_priors=True) == 1
+        with pytest.raises(ValueError, match='already in'):
+            io.check_picks(path, 'a', stamp_priors=True)
+        with pytest.raises(ValueError, match='do not match'):
+            io.check_picks(path, 'b')
+        with pytest.raises(ValueError, match='already in'):
             io.append_picks(path, 'a', c, stamp_priors=True)
-        with pytest.raises(ValueError):
-            io.append_picks(path, 'c', c)
 
     # test_mrc_info_does_not_map_data: the header is enough, so the data mapper is never called
     def test_mrc_info_does_not_map_data(self, tmp_path, write_mrc, monkeypatch) -> None:
