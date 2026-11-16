@@ -161,6 +161,20 @@ class TestIo:
         rows = np.array([[float(v) for v in line.split()] for line in lines[8:]])
         assert np.allclose(rows, c, atol=0.01) and rows[:, 4].tolist() == [0.0, 1.0]
 
+    # test_append_picks_adds_priors_and_guards_columns: one header, stream-mapped priors, duplicate warning, column mismatch error
+    def test_append_picks_adds_priors_and_guards_columns(self, tmp_path) -> None:
+        c = np.array([[10.5, 20.25, 30.0, 0.75, 0.0], [1.0, 2.0, 3.0, 0.5, 1.0]])
+        path = tmp_path / 'picks.csv'
+        io.append_picks(path, 'a', c, stamp_priors=True)
+        io.append_picks(path, 'b', c, stamp_priors=True)
+        lines = path.read_text().splitlines()
+        assert lines[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(lines) == 5
+        assert lines[1].endswith(',0,none') and lines[2].endswith(',1,normal')
+        with pytest.warns(UserWarning):
+            io.append_picks(path, 'a', c, stamp_priors=True)
+        with pytest.raises(ValueError):
+            io.append_picks(path, 'c', c)
+
     # test_mrc_info_does_not_map_data: the header is enough, so the data mapper is never called
     def test_mrc_info_does_not_map_data(self, tmp_path, write_mrc, monkeypatch) -> None:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((4, 5, 6), np.float32), voxel_size=7.84)
