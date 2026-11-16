@@ -5,6 +5,7 @@ icepick: working volume
 # Import external dependencies
 import numpy as np
 from dataclasses import dataclass
+from loguru import logger
 from pathlib import Path
 
 # Import internal icepick objects
@@ -31,6 +32,7 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     if voxel_size <= 0:
         raise ValueError(f'no voxel size in the header of {density!r}')
     grid = params.grid(voxel_size)
+    logger.info(f'{density.name}: shape {shape!r}, voxel size {voxel_size} A, binning {grid.factor} to {grid.voxel_size:.2f} A per working voxel')
     d = asdevice(bin_volume(density, grid.factor, np.mean))
     m = asdevice(bin_volume(segmentation, grid.factor, np.max)) > 0
     near = ndi.binary_dilation(m, iterations=grid.dilate)
@@ -41,7 +43,9 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     bright = x < med - grid.artefact_sd * 1.4826 * xp.median(xp.abs(v - med))
     artefact = ndi.binary_dilation(bright, iterations=grid.artefact_dilate)
     weight = (~(near | artefact)).astype(xp.float32)
-    return Volume(x, m, artefact, weight, sample_z(x), grid)
+    lamella = sample_z(x)
+    logger.debug(f'lamella spans working slices {lamella[0]} to {lamella[1]} of {len(x)}, {int(m.sum())} membrane and {int(artefact.sum())} artefact voxels')
+    return Volume(x, m, artefact, weight, lamella, grid)
 
 # sample_z: working-grid slice range of the specimen, between the structure minima either side of the structure peak
 def sample_z(x: np.ndarray, *, slab: int = 32) -> tuple[int, int]:

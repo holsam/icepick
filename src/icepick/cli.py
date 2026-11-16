@@ -3,7 +3,8 @@ icepick: command line entry point
 '''
 
 # Import external dependencies
-import numpy as np, typer
+import numpy as np, time, typer
+from importlib.metadata import version
 from loguru import logger
 from pathlib import Path
 from pydantic import ValidationError
@@ -71,16 +72,20 @@ def pick(
         backend.use_gpu()
     output.mkdir(parents=True, exist_ok=True)
     log.setup(output)
+    logger.info(f'icepick {version("icepick")} picking {density.name} with {segmentation.name}')
+    logger.debug(f'{params!r}, gpu {gpu}, stamp priors {stamp_priors}, output {output.resolve()}')
     try:
         check_picks(output / 'icepick.csv', segmentation.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
     except ValueError as error:
         logger.error(str(error))
         raise typer.Exit(1) from error
+    t = time.perf_counter()
     c = pick_tomogram(density, segmentation, params)
     write_candidates(output / density.stem, c)
     append_picks(output / 'icepick.csv', segmentation.stem, c, stamp_priors=stamp_priors)
+    logger.info(f'wrote {output / density.stem}.npy and .star, and rows for {segmentation.stem} to icepick.csv')
     counts = np.bincount(c[:, 4].astype(int), minlength=2)
-    logger.info(f'{density.stem} {len(c)} candidates (cytosolic {counts[0]}, membrane {counts[1]})')
+    logger.info(f'{density.stem} {len(c)} candidates (cytosolic {counts[0]}, membrane {counts[1]}) in {time.perf_counter() - t:.1f} s')
 
 # main: console entry point
 def main() -> None:

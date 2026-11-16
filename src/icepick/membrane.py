@@ -4,6 +4,7 @@ icepick: membrane particle stream
 
 # Import external dependencies
 import numpy as np
+from loguru import logger
 
 # Import internal icepick objects
 from icepick.config import Grid
@@ -18,6 +19,7 @@ def pick(volume: Volume, *, stream: int = 1) -> np.ndarray:
     shell = _shell(m, grid)
     s = _excess(x, shell, grid)
     pk = (s == ndi.maximum_filter(s, size=grid.peak)) & (shell <= grid.band) & ~artefact
+    logger.debug(f'{len(x)} slices in {int((shell <= grid.band).sum())} voxels within {grid.band} voxels of a membrane, {int(pk.sum())} peaks kept')
     idx = np.array([asnumpy(a) for a in xp.nonzero(pk)]).T
     zyx = (idx + [lo, 0, 0] + 0.5) * grid.factor
     return np.column_stack([zyx[:, ::-1], asnumpy(s[pk]), np.full(len(idx), stream)])

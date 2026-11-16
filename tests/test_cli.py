@@ -28,7 +28,10 @@ class TestCli:
         picks = (tmp_path / 'out' / 'icepick.csv').read_text().splitlines()
         assert picks[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(picks) == 1 + len(c)
         assert picks[1].startswith('tomo_a_segmented,')
-        assert f'tomo_a {len(c)} candidates' in (tmp_path / 'out' / 'icepick.log').read_text()
+        log = (tmp_path / 'out' / 'icepick.log').read_text()
+        assert f'tomo_a {len(c)} candidates' in log
+        for stage in ('loaded tomo_a.mrc', 'cytosolic stream:', 'membrane stream:', 'merged', 'lamella spans', 'wrote '):
+            assert stage in log    # every stage reports, DEBUG detail included
 
     # test_pick_stops_on_duplicate_tomogram: a tomogram already in icepick.csv exits non-zero before picking and leaves the file alone
     def test_pick_stops_on_duplicate_tomogram(self, tmp_path, write_mrc, monkeypatch) -> None:
