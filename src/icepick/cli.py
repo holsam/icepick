@@ -4,6 +4,7 @@ icepick: command line entry point
 
 # Import external dependencies
 import numpy as np, typer
+from loguru import logger
 from pathlib import Path
 from pydantic import ValidationError
 from typing import Annotated
@@ -13,6 +14,7 @@ from icepick.config import Params
 from icepick.merge import pick_tomogram
 from icepick.utils import backend
 from icepick.utils.gpu import require_gpu
+from icepick.utils import log
 from icepick.utils.io import append_picks, write_candidates
 
 # app: initialise Typer instance
@@ -69,10 +71,11 @@ def pick(
         backend.use_gpu()
     c = pick_tomogram(density, segmentation, params)
     output.mkdir(parents=True, exist_ok=True)
+    log.setup(output)
     write_candidates(output / density.stem, c)
     append_picks(output / 'icepick.csv', segmentation.stem, c, stamp_priors=stamp_priors)
     counts = np.bincount(c[:, 4].astype(int), minlength=2)
-    typer.echo(f'{density.stem} {len(c)} candidates (cytosolic {counts[0]}, membrane {counts[1]})')
+    logger.info(f'{density.stem} {len(c)} candidates (cytosolic {counts[0]}, membrane {counts[1]})')
 
 # main: console entry point
 def main() -> None:

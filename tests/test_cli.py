@@ -25,9 +25,10 @@ class TestCli:
         assert c.shape[1] == 5 and len(c) > 0
         assert len(star) == 8 + len(c)
         assert f'tomo_a {len(c)} candidates' in result.output
-        picks = (tmp_path / 'out' / 'picks.csv').read_text().splitlines()
+        picks = (tmp_path / 'out' / 'icepick.csv').read_text().splitlines()
         assert picks[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(picks) == 1 + len(c)
         assert picks[1].startswith('tomo_a_segmented,')
+        assert f'tomo_a {len(c)} candidates' in (tmp_path / 'out' / 'icepick.log').read_text()
 
     # test_pick_rejects_bad_options: a non-positive diameter is a usage error, not a traceback
     def test_pick_rejects_bad_options(self, tmp_path, write_mrc) -> None:

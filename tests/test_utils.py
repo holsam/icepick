@@ -4,11 +4,12 @@ icepick: tests for shared utilities
 
 # Import external dependencies
 import numpy as np, pytest
+from loguru import logger
 from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import backend, filters, gpu, io, volume
+from icepick.utils import backend, filters, gpu, io, log, volume
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
 _VOXEL: float = 15.68
@@ -276,3 +277,17 @@ class TestGpu:
         monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
         with pytest.raises(RuntimeError, match='no GPU'):
             gpu.require_gpu()
+
+# TestLog: tests for utils/log.py
+class TestLog:
+    # test_setup_writes_debug_to_file_and_info_to_console: the file keeps DEBUG, the console only INFO, both use the shared format
+    def test_setup_writes_debug_to_file_and_info_to_console(self, tmp_path, capsys) -> None:
+        log.setup(tmp_path)
+        logger.debug('fine detail')
+        logger.info('headline')
+        logger.remove()    # flush and close the file sink
+        text = (tmp_path / 'icepick.log').read_text()
+        assert '[DEBUG] fine detail' in text and '[INFO] headline' in text
+        assert text.splitlines()[0][:4].isdigit()
+        err = capsys.readouterr().err
+        assert 'headline' in err and 'fine detail' not in err
