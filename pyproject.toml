@@ -1,6 +1,6 @@
 [project]
 name = "icepick"
-version = "0.2.0"
+version = "0.3.0"
 description = "Template-free particle picking for cryoET workflows."
 readme = "README.md"
 authors = [

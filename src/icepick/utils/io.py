@@ -3,7 +3,7 @@ icepick: file i/o utilities
 '''
 
 # Import external dependencies
-import mrcfile, numpy as np
+import csv, mrcfile, numpy as np, warnings
 from collections.abc import Callable
 from pathlib import Path
 
@@ -44,3 +44,24 @@ def write_candidates(stem: Path, c: np.ndarray) -> None:
     with open(f'{stem}.star', 'w') as f:
         f.write('data_particles\n\nloop_\n_rlnCoordinateX #1\n_rlnCoordinateY #2\n_rlnCoordinateZ #3\n_rlnAutopickFigureOfMerit #4\n_icepickStream #5\n')
         np.savetxt(f, c, fmt=['%.2f', '%.2f', '%.2f', '%.6f', '%d'])
+
+# _STAMP_PRIORS: STAMP orientation prior per icepick stream id
+_STAMP_PRIORS: dict[int, str] = {0: 'none', 1: 'normal'}
+
+# append_picks: append candidates to a shared picks CSV with a tomogram_id column, optionally adding a STAMP prior column
+def append_picks(path: Path, tomogram_id: str, c: np.ndarray, *, stamp_priors: bool = False) -> None:
+    header = ['tomogram_id', 'x', 'y', 'z', 'confidence', 'stream'] + (['prior'] if stamp_priors else [])
+    if path.exists():
+        with open(path, newline='') as f:
+            rows = list(csv.reader(f))
+        if not rows or rows[0] != header:
+            raise ValueError(f'columns in {path!r} do not match {header!r}, remove it or match --stamp-priors')
+        if any(r[0] == tomogram_id for r in rows[1:]):
+            warnings.warn(f'{tomogram_id!r} is already in {path!r}, appending duplicate picks')
+    with open(path, 'a', newline='') as f:
+        w = csv.writer(f)
+        if f.tell() == 0:
+            w.writerow(header)
+        for x, y, z, score, stream in c:
+            row = [tomogram_id, f'{x:.2f}', f'{y:.2f}', f'{z:.2f}', f'{score:.6f}', int(stream)]
+            w.writerow(row + ([_STAMP_PRIORS[int(stream)]] if stamp_priors else []))

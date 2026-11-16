@@ -13,7 +13,7 @@ from icepick.config import Params
 from icepick.merge import pick_tomogram
 from icepick.utils import backend
 from icepick.utils.gpu import require_gpu
-from icepick.utils.io import write_candidates
+from icepick.utils.io import append_picks, write_candidates
 
 # app: initialise Typer instance
 app = typer.Typer(
@@ -25,7 +25,7 @@ app = typer.Typer(
 # _DEFAULTS: parameter defaults, shown in the help text
 _DEFAULTS: Params = Params()
 
-# pick: pick one tomogram and write <density name>.npy and .star
+# pick: pick one tomogram and write <density name>.npy and .star, and append to icepick.csv
 @app.command()
 def pick(
     density: Annotated[
@@ -52,6 +52,10 @@ def pick(
         bool,
         typer.Option('--gpu', help='Run processing using first available GPU (requires icepick\'s gpu extra).'),
     ] = False,
+    stamp_priors: Annotated[
+        bool,
+        typer.Option('--stamp-priors', help='Add a STAMP orientation prior column to icepick.csv (cytosolic: none, membrane: normal).'),
+    ] = False,
 ) -> None:
     try:
         params = Params(particle_diameter=particle_diameter, tilt_range=tilt_range)
@@ -66,6 +70,7 @@ def pick(
     c = pick_tomogram(density, segmentation, params)
     output.mkdir(parents=True, exist_ok=True)
     write_candidates(output / density.stem, c)
+    append_picks(output / 'icepick.csv', segmentation.stem, c, stamp_priors=stamp_priors)
     counts = np.bincount(c[:, 4].astype(int), minlength=2)
     typer.echo(f'{density.stem} {len(c)} candidates (cytosolic {counts[0]}, membrane {counts[1]})')
 

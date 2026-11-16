@@ -18,13 +18,16 @@ class TestCli:
         m = np.zeros(d.shape, np.int8)
         m[:, 46:48, :] = 1
         density, seg = write_mrc(tmp_path / 'tomo_a.mrc', d), write_mrc(tmp_path / 'tomo_a_segmented.mrc', m)
-        result = CliRunner().invoke(app, [str(density), str(seg), '-o', str(tmp_path / 'out')])
+        result = CliRunner().invoke(app, [str(density), str(seg), '-o', str(tmp_path / 'out'), '--stamp-priors'])
         c = np.load(tmp_path / 'out' / 'tomo_a.npy')
         star = (tmp_path / 'out' / 'tomo_a.star').read_text().splitlines()
         assert result.exit_code == 0
         assert c.shape[1] == 5 and len(c) > 0
         assert len(star) == 8 + len(c)
         assert f'tomo_a {len(c)} candidates' in result.output
+        picks = (tmp_path / 'out' / 'picks.csv').read_text().splitlines()
+        assert picks[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(picks) == 1 + len(c)
+        assert picks[1].startswith('tomo_a_segmented,')
 
     # test_pick_rejects_bad_options: a non-positive diameter is a usage error, not a traceback
     def test_pick_rejects_bad_options(self, tmp_path, write_mrc) -> None:
