@@ -19,19 +19,15 @@ from icepick.utils import log
 from icepick.utils.io import append_picks, check_picks, write_candidates
 
 # app: initialise Typer instance
-app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    help='Template-free particle picking for cryoET workflows.',
-)
+app = typer.Typer(add_completion=False)
 
 # _DEFAULTS: parameter defaults, shown in the help text
 _DEFAULTS: Params = Params()
 
-# pick: pick one tomogram and write <density name>.npy and .star, and append to icepick.csv
-@app.command()
+# pick: pick one tomogram and write <tomogram name>.npy and .star, and append to icepick.csv
+@app.command(no_args_is_help=True, help='Template-free particle picking for cryoET workflows.')
 def pick(
-    density: Annotated[
+    tomogram: Annotated[
         Path,
         typer.Argument(exists=True, dir_okay=False, help='Path to denoised tomogram MRC file.'),
     ],
@@ -75,16 +71,16 @@ def pick(
             raise typer.BadParameter(str(error), param_hint='--gpu') from error
         backend.use_gpu()
     output.mkdir(parents=True, exist_ok=True)
-    log.setup(output, density.name, verbosity=verbose)
+    log.setup(output, tomogram.name, verbosity=verbose)
     sys.stderr.write('\n')
     logger.opt(colors=True).info(f'❄️  icepick <dim>(v{version("icepick")})</dim>')
-    check_picks(output / 'icepick.csv', segmentation.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
+    check_picks(output / 'icepick.csv', tomogram.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
     logger.debug(f'icepick parameters: {", ".join(f'{k}={v}' for k,v in params.model_dump().items())}, gpu={gpu}, stamp_priors={stamp_priors}, output={output.resolve()}')
     t = time.perf_counter()
-    c = pick_tomogram(density, segmentation, params)
-    write_candidates(output / density.stem, c)
-    append_picks(output / 'icepick.csv', segmentation.stem, c, stamp_priors=stamp_priors)
-    log.progress(f'wrote {output / density.stem}.npy and .star, and rows for {segmentation.stem} to icepick.csv')
+    c = pick_tomogram(tomogram, segmentation, params)
+    write_candidates(output / tomogram.stem, c)
+    append_picks(output / 'icepick.csv', tomogram.stem, c, stamp_priors=stamp_priors)
+    log.progress(f'wrote {output / tomogram.stem}.npy and .star, and rows for {tomogram.stem} to icepick.csv')
     counts = np.bincount(c[:, 4].astype(int), minlength=2)
     logger.info(f'found {len(c)} candidates (cytosolic {counts[0]}, membrane {counts[1]}) in {time.perf_counter() - t:.1f} s')
     sys.stderr.write('\n')

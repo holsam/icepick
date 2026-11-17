@@ -27,7 +27,7 @@ class TestCli:
         assert f'{len(c)} candidates' in result.output
         picks = (tmp_path / 'out' / 'icepick.csv').read_text().splitlines()
         assert picks[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(picks) == 1 + len(c)
-        assert picks[1].startswith('tomo_a_segmented,')
+        assert picks[1].startswith('tomo_a,')
         log = (tmp_path / 'out' / 'icepick.log').read_text()
         assert f'{len(c)} candidates' in log
         for stage in ('loaded tomogram', 'cytosolic:', 'membrane:', 'merged', 'using working slices:', 'wrote '):
