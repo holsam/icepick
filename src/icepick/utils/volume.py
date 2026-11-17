@@ -5,10 +5,12 @@ icepick: working volume
 # Import external dependencies
 import numpy as np
 from dataclasses import dataclass
+from loguru import logger
 from pathlib import Path
 
 # Import internal icepick objects
 from icepick.config import Grid, Params
+from icepick.utils import log
 from icepick.utils.backend import asdevice, asnumpy, ndi, xp
 from icepick.utils.io import bin_volume, mrc_info
 
@@ -19,7 +21,7 @@ class Volume:
     membrane: np.ndarray    # raw membrane mask
     artefact: np.ndarray    # dilated bright-artefact mask
     weight: np.ndarray    # float32, 0 on dilated membrane and artefacts
-    lamella: tuple[int, int]    # working-grid slice range of the specimen
+    slices: tuple[int, int]    # working-grid slice range of the specimen
     grid: Grid
 
 # load: bin a density and its binary membrane segmentation onto the working grid and build the volume
@@ -27,10 +29,12 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     shape, voxel_size = mrc_info(density)
     seg_shape, _ = mrc_info(segmentation)
     if seg_shape != shape:
-        raise ValueError(f'segmentation shape {seg_shape!r} differs from density shape {shape!r}')
+        log.error_exit(f'segmentation shape {seg_shape!r} differs from density shape {shape!r}', ValueError)
     if voxel_size <= 0:
-        raise ValueError(f'no voxel size in the header of {density!r}')
+        log.error_exit(f'no voxel size in the header of {density!r}', ValueError)
     grid = params.grid(voxel_size)
+    log.progress(f'file parameters: shape {shape!r}, voxel size {voxel_size} A')
+    log.progress(f'binning {grid.factor}x to {grid.voxel_size:.2f} A per working voxel')
     d = asdevice(bin_volume(density, grid.factor, np.mean))
     m = asdevice(bin_volume(segmentation, grid.factor, np.max)) > 0
     near = ndi.binary_dilation(m, iterations=grid.dilate)
@@ -41,11 +45,14 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     bright = x < med - grid.artefact_sd * 1.4826 * xp.median(xp.abs(v - med))
     artefact = ndi.binary_dilation(bright, iterations=grid.artefact_dilate)
     weight = (~(near | artefact)).astype(xp.float32)
-    return Volume(x, m, artefact, weight, sample_z(x), grid)
+    sample = sample_z(x)
+    logger.debug(f'using working slices: {sample[0]} - {sample[1]} (of {len(x)})')
+    logger.debug(f'working slices contain: {int(m.sum())} membrane voxels, {int(artefact.sum())} artefact voxels')
+    return Volume(x, m, artefact, weight, sample, grid)
 
 # sample_z: working-grid slice range of the specimen, between the structure minima either side of the structure peak
 def sample_z(x: np.ndarray, *, slab: int = 32) -> tuple[int, int]:
-    # per-slice spread of band-passed density peaks inside the lamella and rises again at the tomogram ends (junk)
+    # per-slice spread of band-passed density peaks inside the sample and rises again at the tomogram ends (junk)
     halo = 16    # gaussian radius at sigma 4.0 with the default truncate of 4.0, so slab interiors match the full volume
     spread = []
     for a in range(0, len(x), slab):

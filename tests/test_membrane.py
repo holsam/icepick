@@ -29,8 +29,8 @@ class TestMembrane:
         best = c[np.argmax(c[:, 3])]
         assert np.linalg.norm(best[[2, 1, 0]] - (24.5, 35.5, 20.5)) <= 3
 
-    # test_pick_scales_coordinates_to_input_voxels_and_honours_lamella: z offset of the lamella and the binning factor both enter the output coordinates
-    def test_pick_scales_coordinates_to_input_voxels_and_honours_lamella(self) -> None:
+    # test_pick_scales_coordinates_to_input_voxels_and_honours_slices: z offset of the slices and the binning factor both enter the output coordinates
+    def test_pick_scales_coordinates_to_input_voxels_and_honours_slices(self) -> None:
         rng = np.random.default_rng(0)
         x = ndi.gaussian_filter(rng.standard_normal((48, 64, 64)), 1.0).astype(np.float32)
         m = np.zeros(x.shape, bool)

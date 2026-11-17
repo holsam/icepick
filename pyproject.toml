@@ -1,6 +1,6 @@
 [project]
 name = "icepick"
-version = "0.3.0"
+version = "0.4.0"
 description = "Template-free particle picking for cryoET workflows."
 readme = "README.md"
 authors = [
@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "loguru>=0.8.0",
     "mrcfile>=1.5.4",
     "numpy>=2.5.4",
     "pydantic>=2.14.2",

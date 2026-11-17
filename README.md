@@ -35,7 +35,7 @@ Column | Description
 `_rlnAutopickFigureOfMerit` | Score/rank within stream (0-1, with higher scores preferred)
 `_icepickStream` | `icepick` stream responsible for pick (0: cytosolic; 1: membrane)
 
-Each run also appends to `/path/to/output/directory/icepick.csv` (one file for all tomograms, remove it to start afresh), which contains columns: `tomogram_id` (segmentation filename stem), `x`, `y`, `z`, `confidence`, `stream` and, with `--stamp-priors`, `prior`.
+Each run also appends to `/path/to/output/directory/icepick.csv` (one file for all tomograms, remove it to start afresh), which contains columns: `tomogram_id` (tomogram filename stem), `x`, `y`, `z`, `confidence`, `stream` and, with `--stamp-priors`, `prior`.
 
 ## Method
 A brief description of the underlying `icepicker` method is provided below. In all steps, lengths are set in Ångstrom and scaled by particle diameter relative to 250 Å before conversion to working voxels.

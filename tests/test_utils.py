@@ -4,11 +4,12 @@ icepick: tests for shared utilities
 
 # Import external dependencies
 import numpy as np, pytest
+from loguru import logger
 from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import backend, filters, gpu, io, volume
+from icepick.utils import backend, filters, gpu, io, log, volume
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
 _VOXEL: float = 15.68
@@ -94,7 +95,7 @@ class TestFilters:
     # test_matched_rejects_volume_smaller_than_template: a volume that cannot hold the template box is an error
     def test_matched_rejects_volume_smaller_than_template(self) -> None:
         x = np.zeros((20, 64, 64), np.float32)
-        with pytest.raises(ValueError):
+        with pytest.raises(SystemExit):
             filters.matched(x, np.ones_like(x), _GRID)
 
     # test_thin_keeps_best_of_close_pair: of two candidates closer than the radius only the better survives
@@ -147,8 +148,10 @@ class TestIo:
     # test_bin_volume_rejects_volume_smaller_than_factor: nothing left after cropping raises an error
     def test_bin_volume_rejects_volume_smaller_than_factor(self, tmp_path, write_mrc) -> None:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((1, 4, 4), np.float32))
-        with pytest.raises(ValueError):
+        with pytest.raises(SystemExit):
             io.bin_volume(path, 2, np.mean)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' in log
 
     # test_write_candidates_round_trips_npy_and_star: both files hold the same rows, the star has one header block and one line per candidate
     def test_write_candidates_round_trips_npy_and_star(self, tmp_path) -> None:
@@ -161,19 +164,39 @@ class TestIo:
         rows = np.array([[float(v) for v in line.split()] for line in lines[8:]])
         assert np.allclose(rows, c, atol=0.01) and rows[:, 4].tolist() == [0.0, 1.0]
 
-    # test_append_picks_adds_priors_and_guards_columns: one header, stream-mapped priors, duplicate warning, column mismatch error
-    def test_append_picks_adds_priors_and_guards_columns(self, tmp_path) -> None:
+    # test_append_picks_adds_priors_and_logs_existing: one header, stream-mapped priors, an info message counting tomograms already present
+    def test_append_picks_adds_priors_and_logs_existing(self, tmp_path) -> None:
         c = np.array([[10.5, 20.25, 30.0, 0.75, 0.0], [1.0, 2.0, 3.0, 0.5, 1.0]])
         path = tmp_path / 'picks.csv'
+        messages = []
+        logger.add(messages.append, format='{message}')
         io.append_picks(path, 'a', c, stamp_priors=True)
+        assert not messages    # a new file needs no message
         io.append_picks(path, 'b', c, stamp_priors=True)
         lines = path.read_text().splitlines()
         assert lines[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(lines) == 5
         assert lines[1].endswith(',0,none') and lines[2].endswith(',1,normal')
-        with pytest.warns(UserWarning):
+        assert f'appending to {path}, picks from 1 tomograms already present' in messages[0]
+
+    # test_check_picks_rejects_duplicates_and_column_mismatch: a repeated tomogram_id or different columns is an error, a missing file holds none
+    def test_check_picks_rejects_duplicates_and_column_mismatch(self, tmp_path) -> None:
+        c = np.array([[1.0, 2.0, 3.0, 0.5, 1.0]])
+        path = tmp_path / 'picks.csv'
+        assert io.check_picks(path, 'a') == 0
+        io.append_picks(path, 'a', c, stamp_priors=True)
+        assert io.check_picks(path, 'b', stamp_priors=True) == 1
+        with pytest.raises(SystemExit):
+            io.check_picks(path, 'a', stamp_priors=True)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'already in' in log
+        with pytest.raises(SystemExit):
+            io.check_picks(path, 'b')
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'do not match' in log
+        with pytest.raises(SystemExit):
             io.append_picks(path, 'a', c, stamp_priors=True)
-        with pytest.raises(ValueError):
-            io.append_picks(path, 'c', c)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'already in' in log
 
     # test_mrc_info_does_not_map_data: the header is enough, so the data mapper is never called
     def test_mrc_info_does_not_map_data(self, tmp_path, write_mrc, monkeypatch) -> None:
@@ -186,8 +209,10 @@ class TestIo:
     # test_mrc_info_rejects_single_image: a 2D image is not a volume
     def test_mrc_info_rejects_single_image(self, tmp_path, write_mrc) -> None:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((5, 6), np.float32))
-        with pytest.raises(ValueError):
+        with pytest.raises(SystemExit):
             io.mrc_info(path)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' in log
 
 # TestVolume: tests for utils/volume.py
 class TestVolume:
@@ -209,12 +234,10 @@ class TestVolume:
     def test_load_rejects_mismatched_shapes(self, tmp_path, write_mrc) -> None:
         d = write_mrc(tmp_path / 'd.mrc', np.zeros((8, 8, 8), np.float32), _VOXEL)
         s = write_mrc(tmp_path / 's.mrc', np.zeros((8, 8, 6), np.int8), _VOXEL)
-        try:
+        with pytest.raises(SystemExit):
             volume.load(d, s, Params())
-        except ValueError as error:
-            assert 'differs' in str(error)
-        else:
-            raise AssertionError('expected ValueError')
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' in log
 
     # test_sample_z_brackets_structured_middle: structure peaks mid-stack, junk rises at both ends, the range sits between
     def test_sample_z_brackets_structured_middle(self) -> None:
@@ -274,5 +297,33 @@ class TestGpu:
     # test_require_gpu_errors_when_none: nothing assigned raises a clear error
     def test_require_gpu_errors_when_none(self, monkeypatch) -> None:
         monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
-        with pytest.raises(RuntimeError, match='no GPU'):
+        with pytest.raises(SystemExit):
             gpu.require_gpu()
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'no GPU' in log
+
+# TestLog: tests for utils/log.py
+class TestLog:
+    # test_setup_writes_debug_to_file_and_info_to_console: the file keeps DEBUG, the console only INFO, both use the shared format
+    def test_setup_writes_debug_to_file_and_info_to_console(self, tmp_path, capsys) -> None:
+        log.setup(tmp_path, 'tomo_a.mrc')
+        logger.debug('fine detail')
+        logger.info('headline')
+        logger.remove()    # flush and close the file sink
+        text = (tmp_path / 'icepick.log').read_text()
+        assert '[DEBUG]    [tomo_a.mrc] fine detail' in text and '[INFO]     [tomo_a.mrc] headline' in text
+        assert text.splitlines()[0][:4].isdigit()
+        err = capsys.readouterr().err
+        assert 'headline' in err and 'fine detail' not in err
+
+    # test_setup_verbosity_sets_console_level: -v adds PROGRESS and -vv adds DEBUG to the console, the file always keeps both
+    def test_setup_verbosity_sets_console_level(self, tmp_path, capsys) -> None:
+        for verbosity, expected in ((0, (False, False)), (1, (True, False)), (2, (True, True))):
+            log.setup(tmp_path, 'tomo_a.mrc', verbosity=verbosity)
+            log.progress('step')
+            logger.debug('detail')
+            logger.remove()
+            err = capsys.readouterr().err
+            assert ('step' in err, 'detail' in err) == expected
+        text = (tmp_path / 'icepick.log').read_text()
+        assert '[PROGRESS] [tomo_a.mrc] step' in text and '[DEBUG]    [tomo_a.mrc] detail' in text

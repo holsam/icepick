@@ -4,6 +4,7 @@ icepick: shared test fixtures
 
 # Import external dependencies
 import mrcfile, numpy as np, pytest
+from loguru import logger
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,3 +17,9 @@ def write_mrc() -> Callable[..., Path]:
             mrc.voxel_size = voxel_size
         return path
     return write
+
+# _clear_sinks: remove loguru sinks after each test so file handles from log.setup do not leak between tests
+@pytest.fixture(autouse=True)
+def _clear_sinks():
+    yield
+    logger.remove()
