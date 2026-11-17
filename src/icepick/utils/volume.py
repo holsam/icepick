@@ -52,6 +52,12 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
 
 # sample_z: working-grid slice range of the specimen, between the structure minima either side of the structure peak
 def sample_z(x: np.ndarray, *, slab: int = 32) -> tuple[int, int]:
+    profile = slice_profile(x, slab=slab)
+    top = int(np.argmax(profile))
+    return int(np.argmin(profile[:top + 1])), top + int(np.argmin(profile[top:])) + 1
+
+# slice_profile: smoothed per-slice spread of band-passed density along z
+def slice_profile(x: np.ndarray, *, slab: int = 32) -> np.ndarray:
     # per-slice spread of band-passed density peaks inside the sample and rises again at the tomogram ends (junk)
     halo = 16    # gaussian radius at sigma 4.0 with the default truncate of 4.0, so slab interiors match the full volume
     spread = []
@@ -60,6 +66,4 @@ def sample_z(x: np.ndarray, *, slab: int = 32) -> tuple[int, int]:
         lo, hi = max(a - halo, 0), min(b + halo, len(x))
         band = ndi.gaussian_filter(x[lo:hi], 1.0) - ndi.gaussian_filter(x[lo:hi], 4.0)    # working-voxel scales, which follow the particle
         spread.append(band[a - lo:b - lo].std(axis=(1, 2)))
-    profile = asnumpy(ndi.gaussian_filter1d(xp.concatenate(spread), 3.0))
-    top = int(np.argmax(profile))
-    return int(np.argmin(profile[:top + 1])), top + int(np.argmin(profile[top:])) + 1
+    return asnumpy(ndi.gaussian_filter1d(xp.concatenate(spread), 3.0))

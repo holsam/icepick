@@ -18,13 +18,14 @@ class TestCli:
         m = np.zeros(d.shape, np.int8)
         m[:, 46:48, :] = 1
         density, seg = write_mrc(tmp_path / 'tomo_a.mrc', d), write_mrc(tmp_path / 'tomo_a_segmented.mrc', m)
-        result = CliRunner().invoke(app, [str(density), str(seg), '-o', str(tmp_path / 'out'), '--stamp-priors'])
+        result = CliRunner().invoke(app, [str(density), str(seg), '-o', str(tmp_path / 'out'), '--stamp-priors', '--slice-range'])
         c = np.load(tmp_path / 'out' / 'tomo_a.npy')
         star = (tmp_path / 'out' / 'tomo_a.star').read_text().splitlines()
         assert result.exit_code == 0
         assert c.shape[1] == 5 and len(c) > 0
         assert len(star) == 8 + len(c)
         assert f'{len(c)} candidates' in result.output
+        assert (tmp_path / 'out' / 'tomo_a_slice_range.png').exists()
         picks = (tmp_path / 'out' / 'icepick.csv').read_text().splitlines()
         assert picks[0] == 'tomogram_id,x,y,z,confidence,stream,prior' and len(picks) == 1 + len(c)
         assert picks[1].startswith('tomo_a,')

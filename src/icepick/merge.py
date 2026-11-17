@@ -14,13 +14,16 @@ from scipy.stats import rankdata
 # Import internal icepick objects
 from icepick import cytosolic, membrane
 from icepick.config import Params
-from icepick.utils import log, volume
+from icepick.utils import log, plot, volume
 
 # pick_tomogram: merged candidate array (x, y, z, score, stream) in input voxels, score is the within-stream rank in (0, 1]
-def pick_tomogram(density: Path, segmentation: Path, params: Params) -> np.ndarray:
+def pick_tomogram(density: Path, segmentation: Path, params: Params, *, slice_plot: Path | None = None) -> np.ndarray:
     t = time.perf_counter()
     vol = volume.load(density, segmentation, params)
     log.progress(f'loaded tomogram in {time.perf_counter() - t:.1f} s')
+    if slice_plot is not None:
+        plot.save_slice_range(slice_plot, vol.x, vol.slices)
+        log.progress(f'wrote slice range plot to {slice_plot}')
     streams = []
     for name, pick in (('cytosolic', cytosolic.pick), ('membrane', membrane.pick)):
         t = time.perf_counter()

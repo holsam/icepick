@@ -15,7 +15,7 @@ from icepick.config import Params
 from icepick.merge import pick_tomogram
 from icepick.utils import backend
 from icepick.utils.gpu import require_gpu
-from icepick.utils import log
+from icepick.utils import log, plot
 from icepick.utils.io import append_picks, check_picks, write_candidates
 
 # app: initialise Typer instance
@@ -55,6 +55,10 @@ def pick(
         bool,
         typer.Option('--stamp-priors', help='Add a STAMP orientation prior column to icepick.csv (cytosolic: none, membrane: normal).'),
     ] = False,
+    slice_range: Annotated[
+        bool,
+        typer.Option('--slice-range', help='Save a plot of the detected slice range to <tomogram>_slice_range.png (requires icepick\'s plot extra).'),
+    ] = False,
     verbose: Annotated[
         int,
         typer.Option('-v', '--verbose', count=True, help='Show progress on the console (-v) or debug detail (-vv).'),
@@ -70,6 +74,8 @@ def pick(
         except RuntimeError as error:
             raise typer.BadParameter(str(error), param_hint='--gpu') from error
         backend.use_gpu()
+    if slice_range:
+        plot.require_matplotlib()
     output.mkdir(parents=True, exist_ok=True)
     log.setup(output, tomogram.name, verbosity=verbose)
     sys.stderr.write('\n')
@@ -77,7 +83,7 @@ def pick(
     check_picks(output / 'icepick.csv', tomogram.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
     logger.debug(f'icepick parameters: {", ".join(f'{k}={v}' for k,v in params.model_dump().items())}, gpu={gpu}, stamp_priors={stamp_priors}, output={output.resolve()}')
     t = time.perf_counter()
-    c = pick_tomogram(tomogram, segmentation, params)
+    c = pick_tomogram(tomogram, segmentation, params, slice_plot=output / f'{tomogram.stem}_slice_range.png' if slice_range else None)
     write_candidates(output / tomogram.stem, c)
     append_picks(output / 'icepick.csv', tomogram.stem, c, stamp_priors=stamp_priors)
     log.progress(f'wrote {output / tomogram.stem}.npy and .star, and rows for {tomogram.stem} to icepick.csv')
