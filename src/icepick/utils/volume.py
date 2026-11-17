@@ -10,6 +10,7 @@ from pathlib import Path
 
 # Import internal icepick objects
 from icepick.config import Grid, Params
+from icepick.utils import log
 from icepick.utils.backend import asdevice, asnumpy, ndi, xp
 from icepick.utils.io import bin_volume, mrc_info
 
@@ -32,7 +33,8 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     if voxel_size <= 0:
         raise ValueError(f'no voxel size in the header of {density!r}')
     grid = params.grid(voxel_size)
-    logger.info(f'{density.name}: shape {shape!r}, voxel size {voxel_size} A, binning {grid.factor} to {grid.voxel_size:.2f} A per working voxel')
+    log.progress(f'file parameters: shape {shape!r}, voxel size {voxel_size} A')
+    log.progress(f'binning {grid.factor}x to {grid.voxel_size:.2f} A per working voxel')
     d = asdevice(bin_volume(density, grid.factor, np.mean))
     m = asdevice(bin_volume(segmentation, grid.factor, np.max)) > 0
     near = ndi.binary_dilation(m, iterations=grid.dilate)
@@ -43,13 +45,14 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     bright = x < med - grid.artefact_sd * 1.4826 * xp.median(xp.abs(v - med))
     artefact = ndi.binary_dilation(bright, iterations=grid.artefact_dilate)
     weight = (~(near | artefact)).astype(xp.float32)
-    lamella = sample_z(x)
-    logger.debug(f'lamella spans working slices {lamella[0]} to {lamella[1]} of {len(x)}, {int(m.sum())} membrane and {int(artefact.sum())} artefact voxels')
-    return Volume(x, m, artefact, weight, lamella, grid)
+    sample = sample_z(x)
+    logger.debug(f'using working slices: {sample[0]} - {sample[1]} (of {len(x)})')
+    logger.debug(f'working slices contain: {int(m.sum())} membrane voxels, {int(artefact.sum())} artefact voxels')
+    return Volume(x, m, artefact, weight, sample, grid)
 
 # sample_z: working-grid slice range of the specimen, between the structure minima either side of the structure peak
 def sample_z(x: np.ndarray, *, slab: int = 32) -> tuple[int, int]:
-    # per-slice spread of band-passed density peaks inside the lamella and rises again at the tomogram ends (junk)
+    # per-slice spread of band-passed density peaks inside the sample and rises again at the tomogram ends (junk)
     halo = 16    # gaussian radius at sigma 4.0 with the default truncate of 4.0, so slab interiors match the full volume
     spread = []
     for a in range(0, len(x), slab):

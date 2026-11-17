@@ -14,18 +14,18 @@ from scipy.stats import rankdata
 # Import internal icepick objects
 from icepick import cytosolic, membrane
 from icepick.config import Params
-from icepick.utils import volume
+from icepick.utils import log, volume
 
 # pick_tomogram: merged candidate array (x, y, z, score, stream) in input voxels, score is the within-stream rank in (0, 1]
 def pick_tomogram(density: Path, segmentation: Path, params: Params) -> np.ndarray:
     t = time.perf_counter()
     vol = volume.load(density, segmentation, params)
-    logger.info(f'loaded {density.name} in {time.perf_counter() - t:.1f} s')
+    log.progress(f'loaded tomogram in {time.perf_counter() - t:.1f} s')
     streams = []
     for name, pick in (('cytosolic', cytosolic.pick), ('membrane', membrane.pick)):
         t = time.perf_counter()
         streams.append(pick(vol))
-        logger.info(f'{name} stream: {len(streams[-1])} candidates in {time.perf_counter() - t:.1f} s')
+        log.progress(f'{name}: {len(streams[-1])} candidates in {time.perf_counter() - t:.1f} s')
     return merge(streams, vol.grid.duplicate * vol.grid.factor)
 
 # merge: pool per-stream candidates, put scores on a common rank scale, drop cross-stream duplicates within radius (input voxels)
@@ -48,5 +48,5 @@ def merge(streams: list[np.ndarray], radius: float) -> np.ndarray:
             continue
         near = np.array(tree.query_ball_point(c[i, :3], radius), int)
         gone[near[(c[near, 4] != c[i, 4]) & (near > i)]] = True    # only across streams, within-stream thinning is each stream's job
-    logger.info(f'merged {len(c)} candidates to {int((~gone).sum())}, dropping {int(gone.sum())} cross-stream duplicates within {radius:.1f} voxels')
+    log.progress(f'merged {len(c)} candidates to {int((~gone).sum())} ({int(gone.sum())} picks within {radius:.1f} voxels of higher-ranked pick)')
     return c[~gone]

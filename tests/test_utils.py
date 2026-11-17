@@ -95,7 +95,7 @@ class TestFilters:
     # test_matched_rejects_volume_smaller_than_template: a volume that cannot hold the template box is an error
     def test_matched_rejects_volume_smaller_than_template(self) -> None:
         x = np.zeros((20, 64, 64), np.float32)
-        with pytest.raises(ValueError):
+        with pytest.raises(SystemExit):
             filters.matched(x, np.ones_like(x), _GRID)
 
     # test_thin_keeps_best_of_close_pair: of two candidates closer than the radius only the better survives
@@ -296,12 +296,24 @@ class TestGpu:
 class TestLog:
     # test_setup_writes_debug_to_file_and_info_to_console: the file keeps DEBUG, the console only INFO, both use the shared format
     def test_setup_writes_debug_to_file_and_info_to_console(self, tmp_path, capsys) -> None:
-        log.setup(tmp_path)
+        log.setup(tmp_path, 'tomo_a.mrc')
         logger.debug('fine detail')
         logger.info('headline')
         logger.remove()    # flush and close the file sink
         text = (tmp_path / 'icepick.log').read_text()
-        assert '[DEBUG] fine detail' in text and '[INFO] headline' in text
+        assert '[DEBUG]    [tomo_a.mrc] fine detail' in text and '[INFO]     [tomo_a.mrc] headline' in text
         assert text.splitlines()[0][:4].isdigit()
         err = capsys.readouterr().err
         assert 'headline' in err and 'fine detail' not in err
+
+    # test_setup_verbosity_sets_console_level: -v adds PROGRESS and -vv adds DEBUG to the console, the file always keeps both
+    def test_setup_verbosity_sets_console_level(self, tmp_path, capsys) -> None:
+        for verbosity, expected in ((0, (False, False)), (1, (True, False)), (2, (True, True))):
+            log.setup(tmp_path, 'tomo_a.mrc', verbosity=verbosity)
+            log.progress('step')
+            logger.debug('detail')
+            logger.remove()
+            err = capsys.readouterr().err
+            assert ('step' in err, 'detail' in err) == expected
+        text = (tmp_path / 'icepick.log').read_text()
+        assert '[PROGRESS] [tomo_a.mrc] step' in text and '[DEBUG]    [tomo_a.mrc] detail' in text
