@@ -3,13 +3,13 @@ icepick: tests for shared utilities
 '''
 
 # Import external dependencies
-import numpy as np, pytest
+import numpy as np, pytest, sys
 from loguru import logger
 from scipy import ndimage as ndi
 
 # Import internal icepick objects
 from icepick.config import Params
-from icepick.utils import backend, filters, gpu, io, log, volume
+from icepick.utils import backend, filters, gpu, io, log, plot, volume
 
 # _VOXEL: input voxel size (Angstrom) at which a 250 A particle needs no binning
 _VOXEL: float = 15.68
@@ -256,6 +256,26 @@ class TestVolume:
         x = (ndi.gaussian_filter(rng.standard_normal((120, 40, 40)), 1.5) * amplitude[:, None, None]).astype(np.float32)
         assert volume.sample_z(x, slab=7) == volume.sample_z(x, slab=len(x))
 
+    # test_slice_profile_matches_sample_z: the range from sample_z sits between the profile minima either side of its peak
+    def test_slice_profile_matches_sample_z(self) -> None:
+        x = np.random.default_rng(2).standard_normal((60, 24, 24)).astype(np.float32)
+        p = volume.slice_profile(x)
+        top = int(np.argmax(p))
+        assert volume.sample_z(x) == (int(np.argmin(p[:top + 1])), top + int(np.argmin(p[top:])) + 1)
+
+# TestPlot: tests for utils/plot.py
+class TestPlot:
+    # test_save_slice_range_writes_png: the plot is written as a PNG
+    def test_save_slice_range_writes_png(self, tmp_path) -> None:
+        x = np.random.default_rng(3).standard_normal((60, 24, 24)).astype(np.float32)
+        plot.save_slice_range(tmp_path / 'p.png', x, (10, 50))
+        assert (tmp_path / 'p.png').read_bytes()[:4] == b'\x89PNG'
+
+    # test_require_matplotlib_exits_when_missing: a missing matplotlib exits with the install hint
+    def test_require_matplotlib_exits_when_missing(self, monkeypatch) -> None:
+        monkeypatch.setitem(sys.modules, 'matplotlib', None)    # makes the import raise ImportError
+        with pytest.raises(SystemExit):
+            plot.require_matplotlib()
 
 # TestGpu: tests for utils/gpu.py
 class TestGpu:

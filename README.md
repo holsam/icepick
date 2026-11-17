@@ -9,7 +9,7 @@ uv tool install git+https://github.com/holsam/icepick
 
 ## Usage
 ```sh
-icepick /path/to/denoised/tomogram /path/to/segmentation -o /path/to/output/directory [--particle-diameter INT] [--tilt-range [INT]]
+icepick /path/to/denoised/tomogram /path/to/segmentation -o /path/to/output/directory [--particle-diameter INT] [--tilt-range [INT]] [--slice-range]
 ```
 
 ### Options
@@ -21,6 +21,7 @@ Option | Default | Description
 `--particle-diameter INT` | 250 | Ångstrom. Sets the working grid and every particle-scaled length. The input is binned by the whole factor that brings the voxel closest to diameter / 16 (so a particle spans about 16 working voxels), capped at 24 Å per working voxel for large particles.
 `--tilt-range INT` | 60 | Maximum tilt angle in degrees (±). Sets the template elongation along z from missing wedge.
 `--stamp-priors` | *n/a* | Adds a `prior` column to `icepick.csv` for `stamp pick` (cytosolic: `none`; membrane: `normal`).
+`--slice-range` | *n/a* | Saves `<name>_slice_range.png` to the output directory, showing central x-z slice of volume and per-slice spread with working slice range marked. Requires the `icepick[plot]` optional extra to be installed.
 `--gpu` | *n/a* | Switches processing to use first available GPU on Linux/Windows systems via `cupy`. Requires the `icepick[gpu]` optional extra to be installed.
 
 ### Outputs
