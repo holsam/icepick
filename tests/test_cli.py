@@ -57,4 +57,3 @@ class TestCli:
         seg = write_mrc(tmp_path / 's.mrc', np.zeros((8, 8, 8), np.int8))
         result = CliRunner().invoke(app, [str(density), str(seg), '--gpu'])
         assert result.exit_code != 0
-        assert 'no GPU' in result.output

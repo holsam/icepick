@@ -78,12 +78,7 @@ def pick(
     log.setup(output, density.name, verbosity=verbose)
     sys.stderr.write('\n')
     logger.opt(colors=True).info(f'❄️  icepick <dim>(v{version("icepick")})</dim>')
-    try:
-        check_picks(output / 'icepick.csv', segmentation.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
-    except ValueError as error:
-        logger.error(str(error))
-        sys.stderr.write('\n')
-        raise typer.Exit(1) from error
+    check_picks(output / 'icepick.csv', segmentation.stem, stamp_priors=stamp_priors)    # fail before the slow picking, not after
     logger.debug(f'icepick parameters: {", ".join(f'{k}={v}' for k,v in params.model_dump().items())}, gpu={gpu}, stamp_priors={stamp_priors}, output={output.resolve()}')
     t = time.perf_counter()
     c = pick_tomogram(density, segmentation, params)

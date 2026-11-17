@@ -5,6 +5,9 @@ icepick: gpu discovery
 # Import external dependencies
 import os, subprocess
 
+# Import internal icepick objects
+from icepick.utils.log import error_exit
+
 # _SLURM: scheduler variables listing the GPUs assigned to a job or step, in order of preference
 _SLURM: tuple[str, ...] = ('SLURM_STEP_GPUS', 'SLURM_JOB_GPUS', 'GPU_DEVICE_ORDINAL')
 
@@ -22,14 +25,14 @@ def assigned_gpus() -> list[str]:
 def require_gpu() -> None:
     gpus = assigned_gpus()
     if not gpus:
-        raise RuntimeError('no GPU is assigned to this process (check CUDA_VISIBLE_DEVICES or the scheduler allocation)')
+        error_exit('no GPU is assigned to this process (check CUDA_VISIBLE_DEVICES or the scheduler allocation)', RuntimeError)
     os.environ.setdefault('CUDA_VISIBLE_DEVICES', ','.join(gpus))    # scheduler-only assignment, otherwise cupy would see all
     try:
         import cupy
     except ImportError as error:
-        raise RuntimeError("cupy is not installed, install with 'uv tool install \"git+https://github.com/holsam/icepick[gpu]\"'") from error
+        error_exit("cupy is not installed, install with 'uv tool install \"git+https://github.com/holsam/icepick[gpu]\"'", RuntimeError)
     if cupy.cuda.runtime.getDeviceCount() < 1:
-        raise RuntimeError('cupy found no CUDA device')
+        error_exit('cupy found no CUDA device', RuntimeError)
 
 # _split: comma separated device list to identifiers, dropping blanks and the CUDA '-1' no-device marker
 def _split(value: str) -> list[str]:

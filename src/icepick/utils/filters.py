@@ -4,12 +4,12 @@ icepick: blob and matched filters
 
 # Import external dependencies
 import numpy as np
-from loguru import logger
 from scipy.spatial import cKDTree
 
 # Import internal icepick objects
 from icepick.config import Grid
 from icepick.utils.backend import asdevice, asnumpy, irfftn, ndi, release, rfftn, xp
+from icepick.utils.log import error_exit
 
 # blobs: membrane-aware multi-scale DoG candidates, rows (x, y, z, dog score) in working-grid voxels, centred on voxel centres
 def blobs(x: np.ndarray, w: np.ndarray, grid: Grid) -> np.ndarray:
@@ -34,8 +34,7 @@ def blobs(x: np.ndarray, w: np.ndarray, grid: Grid) -> np.ndarray:
 # matched: matched-filter score map over overlapping z tiles, each whitened and normalised on its own
 def matched(x: np.ndarray, w: np.ndarray, grid: Grid) -> np.ndarray:
     if min(x.shape) < 2 * grid.box + 1:
-        logger.error(f'volume {x.shape!r} on the working grid is smaller than the template box {2 * grid.box + 1}')
-        raise SystemExit(1)
+        error_exit(f'volume {x.shape!r} on the working grid is smaller than the template box {2 * grid.box + 1}', ValueError)
     filled = xp.where(w > 0, x, nconv(x, w, grid.fill)[0])
     n, margin, depth = grid.tile, grid.box, x.shape[0]
     # half-overlapping tiles cross-faded with triangular weights, so per-tile normalisation leaves no seams

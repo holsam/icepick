@@ -14,11 +14,11 @@ from icepick.utils.volume import Volume
 # pick: candidate array (x, y, z, score, stream) in input voxels for one tomogram, score is a mean rank in (0, 1]
 def pick(volume: Volume, *, stream: int = 0) -> np.ndarray:
     grid = volume.grid
-    lo, hi = volume.lamella
+    lo, hi = volume.slices
     c = filters.blobs(volume.x, volume.weight, grid)
     n = len(c)
-    c = c[(c[:, 2] >= lo) & (c[:, 2] < hi)]    # outside the lamella is junk
-    logger.debug(f'{n} blobs above threshold, {len(c)} inside the lamella')
+    c = c[(c[:, 2] >= lo) & (c[:, 2] < hi)]    # outside the volume is junk
+    logger.debug(f'{n} blobs above threshold, {len(c)} inside the volume')
     if not len(c):
         return np.zeros((0, 5))
     mf = filters.rescore(c, filters.matched(volume.x, volume.weight, grid))

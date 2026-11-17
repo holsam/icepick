@@ -8,6 +8,9 @@ from loguru import logger
 from collections.abc import Callable
 from pathlib import Path
 
+# Import internal icepick objects
+from icepick.utils.log import error_exit
+
 # _CHUNK: input slices read at a time while binning
 _CHUNK: int = 64
 
@@ -16,7 +19,7 @@ def mrc_info(path: Path) -> tuple[tuple[int, int, int], float]:
     with mrcfile.open(path, mode='r', permissive=True, header_only=True) as mrc:
         z, y, x = int(mrc.header.nz), int(mrc.header.ny), int(mrc.header.nx)
         if z < 2:
-            raise ValueError(f'expected a 3D volume in {path!r}, got shape {(z, y, x)!r}')
+            error_exit(f'expected a 3D volume in {path!r}, got shape {(z, y, x)!r}', ValueError)
         return (z, y, x), round(float(mrc.voxel_size.x), 4)    # float32 header noise would move radii across voxel distances
 
 # bin_volume: read an MRC in z chunks and reduce each factor-sized block, cropping to a multiple of the factor
@@ -27,7 +30,7 @@ def bin_volume(path: Path, factor: int, reduce: Callable[..., np.ndarray]) -> np
         dtype, offset = mrcfile.utils.data_dtype_from_header(h), 1024 + int(h.nsymbt)
     nz, ny, nx = (n // factor * factor for n in shape)
     if min(nz, ny, nx) == 0:
-        raise ValueError(f'volume {shape!r} in {path!r} is smaller than binning factor {factor}')
+        error_exit(f'volume {shape!r} in {path!r} is smaller than binning factor {factor}', ValueError)
     out = np.empty((nz // factor, ny // factor, nx // factor), np.float32)
     step = factor * max(_CHUNK // factor, 1)    # chunks must hold whole blocks
     with open(path, 'rb') as f:
@@ -57,10 +60,10 @@ def check_picks(path: Path, tomogram_id: str, *, stamp_priors: bool = False) -> 
     with open(path, newline='') as f:
         rows = list(csv.reader(f))
     if not rows or rows[0] != header:
-        raise ValueError(f'columns in {path!r} do not match {header!r}, remove it or match --stamp-priors')
+        error_exit(f'columns in {path!r} do not match {header!r}, remove it or match --stamp-priors', ValueError)
     ids = {r[0] for r in rows[1:]}
     if tomogram_id in ids:
-        raise ValueError(f'{tomogram_id!r} is already in {path!r}, remove its rows or use another output directory')
+        error_exit(f'{tomogram_id!r} is already in {str(path)!r}, remove its rows or use another output directory', ValueError)
     return len(ids)
 
 # append_picks: append candidates to a shared picks CSV with a tomogram_id column, optionally adding a STAMP prior column

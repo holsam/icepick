@@ -21,7 +21,7 @@ class Volume:
     membrane: np.ndarray    # raw membrane mask
     artefact: np.ndarray    # dilated bright-artefact mask
     weight: np.ndarray    # float32, 0 on dilated membrane and artefacts
-    lamella: tuple[int, int]    # working-grid slice range of the specimen
+    slices: tuple[int, int]    # working-grid slice range of the specimen
     grid: Grid
 
 # load: bin a density and its binary membrane segmentation onto the working grid and build the volume
@@ -29,9 +29,9 @@ def load(density: Path, segmentation: Path, params: Params) -> Volume:
     shape, voxel_size = mrc_info(density)
     seg_shape, _ = mrc_info(segmentation)
     if seg_shape != shape:
-        raise ValueError(f'segmentation shape {seg_shape!r} differs from density shape {shape!r}')
+        log.error_exit(f'segmentation shape {seg_shape!r} differs from density shape {shape!r}', ValueError)
     if voxel_size <= 0:
-        raise ValueError(f'no voxel size in the header of {density!r}')
+        log.error_exit(f'no voxel size in the header of {density!r}', ValueError)
     grid = params.grid(voxel_size)
     log.progress(f'file parameters: shape {shape!r}, voxel size {voxel_size} A')
     log.progress(f'binning {grid.factor}x to {grid.voxel_size:.2f} A per working voxel')

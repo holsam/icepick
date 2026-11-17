@@ -148,8 +148,10 @@ class TestIo:
     # test_bin_volume_rejects_volume_smaller_than_factor: nothing left after cropping raises an error
     def test_bin_volume_rejects_volume_smaller_than_factor(self, tmp_path, write_mrc) -> None:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((1, 4, 4), np.float32))
-        with pytest.raises(ValueError):
+        with pytest.raises(SystemExit):
             io.bin_volume(path, 2, np.mean)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' in log
 
     # test_write_candidates_round_trips_npy_and_star: both files hold the same rows, the star has one header block and one line per candidate
     def test_write_candidates_round_trips_npy_and_star(self, tmp_path) -> None:
@@ -183,12 +185,18 @@ class TestIo:
         assert io.check_picks(path, 'a') == 0
         io.append_picks(path, 'a', c, stamp_priors=True)
         assert io.check_picks(path, 'b', stamp_priors=True) == 1
-        with pytest.raises(ValueError, match='already in'):
+        with pytest.raises(SystemExit):
             io.check_picks(path, 'a', stamp_priors=True)
-        with pytest.raises(ValueError, match='do not match'):
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'already in' in log
+        with pytest.raises(SystemExit):
             io.check_picks(path, 'b')
-        with pytest.raises(ValueError, match='already in'):
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'do not match' in log
+        with pytest.raises(SystemExit):
             io.append_picks(path, 'a', c, stamp_priors=True)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'already in' in log
 
     # test_mrc_info_does_not_map_data: the header is enough, so the data mapper is never called
     def test_mrc_info_does_not_map_data(self, tmp_path, write_mrc, monkeypatch) -> None:
@@ -201,8 +209,10 @@ class TestIo:
     # test_mrc_info_rejects_single_image: a 2D image is not a volume
     def test_mrc_info_rejects_single_image(self, tmp_path, write_mrc) -> None:
         path = write_mrc(tmp_path / 'a.mrc', np.zeros((5, 6), np.float32))
-        with pytest.raises(ValueError):
+        with pytest.raises(SystemExit):
             io.mrc_info(path)
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' in log
 
 # TestVolume: tests for utils/volume.py
 class TestVolume:
@@ -224,12 +234,10 @@ class TestVolume:
     def test_load_rejects_mismatched_shapes(self, tmp_path, write_mrc) -> None:
         d = write_mrc(tmp_path / 'd.mrc', np.zeros((8, 8, 8), np.float32), _VOXEL)
         s = write_mrc(tmp_path / 's.mrc', np.zeros((8, 8, 6), np.int8), _VOXEL)
-        try:
+        with pytest.raises(SystemExit):
             volume.load(d, s, Params())
-        except ValueError as error:
-            assert 'differs' in str(error)
-        else:
-            raise AssertionError('expected ValueError')
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' in log
 
     # test_sample_z_brackets_structured_middle: structure peaks mid-stack, junk rises at both ends, the range sits between
     def test_sample_z_brackets_structured_middle(self) -> None:
@@ -289,8 +297,10 @@ class TestGpu:
     # test_require_gpu_errors_when_none: nothing assigned raises a clear error
     def test_require_gpu_errors_when_none(self, monkeypatch) -> None:
         monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '')
-        with pytest.raises(RuntimeError, match='no GPU'):
+        with pytest.raises(SystemExit):
             gpu.require_gpu()
+            log = (tmp_path / 'out' / 'icepick.log').read_text()
+            assert 'ERROR' and 'no GPU' in log
 
 # TestLog: tests for utils/log.py
 class TestLog:

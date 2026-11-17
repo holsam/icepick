@@ -30,3 +30,9 @@ def setup(output: Path, tomogram: str, *, verbosity: int = 0) -> None:
     logger.remove()
     logger.add(sys.stderr, format=LOG_FORMAT, level=CONSOLE_LEVELS[min(verbosity, 2)])
     logger.add(output / 'icepick.log', format=LOG_FORMAT, level='DEBUG')
+
+# error_exit: log an error message then exit with error code 1
+def error_exit(msg: str, exc) -> None:
+    logger.error(msg)
+    sys.stderr.write('\n')
+    raise SystemExit(1) from exc
